@@ -53,17 +53,39 @@ function XmlSalesUploadFormInner({
     total_itens_inseridos: number;
     pendencias: Pendencia[];
   } | null>(null);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchSpedFiles() {
       try {
+        setLoadingError(null);
         const res = await fetch("/api/sped/list");
-        if (res.ok) {
-          const data = await res.json();
-          setSpedFiles(data.files || []);
+        
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          const errorMessage = errorData.error || `Erro ${res.status}: ${res.statusText}`;
+          throw new Error(errorMessage);
+        }
+        
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.files)) {
+          setSpedFiles(data.files);
+        } else {
+          setSpedFiles([]);
         }
       } catch (error) {
         console.error("Erro ao buscar arquivos SPED:", error);
+        if (error instanceof Error) {
+          if (error.message.includes("Failed to fetch") || error.message.includes("Load failed")) {
+            setLoadingError(
+              "Não foi possível conectar ao servidor. Verifique se o servidor está rodando e se as variáveis de ambiente estão configuradas corretamente no Vercel."
+            );
+          } else {
+            setLoadingError(`Erro ao carregar arquivos SPED: ${error.message}`);
+          }
+        } else {
+          setLoadingError("Erro desconhecido ao carregar arquivos SPED.");
+        }
       }
     }
     fetchSpedFiles();
@@ -157,22 +179,24 @@ function XmlSalesUploadFormInner({
 
             clearTimeout(timeoutId);
 
+            // Verificar se a resposta é JSON
             const contentType = res.headers.get("content-type");
             if (!contentType || !contentType.includes("application/json")) {
               const text = await res.text();
+              const errorMsg = text.length > 0 
+                ? text.substring(0, 500)
+                : `Resposta inválida do servidor (status ${res.status})`;
               throw new Error(
-                `Resposta inválida do servidor no lote ${i + 1}: ${text.substring(
-                  0,
-                  200
-                )}`
+                `Resposta inválida do servidor no lote ${i + 1}: ${errorMsg}`
               );
             }
 
             const json = await res.json();
 
             if (!res.ok) {
+              const errorDetail = json.detail ? ` (${json.detail})` : "";
               throw new Error(
-                `Erro no lote ${i + 1}: ${json.error || "Erro desconhecido"}`
+                `Erro no lote ${i + 1}: ${json.error || "Erro desconhecido"}${errorDetail}`
               );
             }
 
@@ -247,10 +271,12 @@ function XmlSalesUploadFormInner({
           setStatus("Erro: Importação cancelada por timeout. Tente novamente.");
         } else if (
           error.message.includes("Failed to fetch") ||
-          error.message.includes("Load failed")
+          error.message.includes("Load failed") ||
+          error.message.includes("NetworkError") ||
+          error.name === "TypeError"
         ) {
           setStatus(
-            "Erro: Não foi possível conectar ao servidor. Verifique se o servidor está rodando e tente novamente."
+            "Erro: Não foi possível conectar ao servidor. Verifique se o servidor está rodando, se as variáveis de ambiente estão configuradas no Vercel, e tente novamente."
           );
         } else {
           setStatus(`Erro: ${error.message}`);
@@ -293,6 +319,19 @@ function XmlSalesUploadFormInner({
         </div>
       )}
 
+      {loadingError && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
+          <p className="text-red-800 font-medium">⚠️ Erro ao carregar arquivos SPED</p>
+          <p className="text-red-700 text-sm mt-1">{loadingError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-2 px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -307,7 +346,7 @@ function XmlSalesUploadFormInner({
               value={selectedFileId}
               onChange={(e) => setSelectedFileId(e.target.value)}
               className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              disabled={isLoading}
+              disabled={isLoading || !!loadingError}
               required
             >
               <option value="">Selecione um arquivo SPED...</option>
@@ -318,6 +357,11 @@ function XmlSalesUploadFormInner({
                 </option>
               ))}
             </select>
+            {spedFiles.length === 0 && !loadingError && (
+              <p className="mt-1 text-sm text-gray-500">
+                Nenhum arquivo SPED encontrado. Importe um arquivo SPED primeiro.
+              </p>
+            )}
           </div>
 
           <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
