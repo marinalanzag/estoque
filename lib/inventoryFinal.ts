@@ -1,4 +1,3 @@
-import { ReturnType } from "@/lib/supabaseServer";
 import { normalizeCodItem } from "@/lib/utils";
 
 const PAGE_SIZE = 1000;
