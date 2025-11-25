@@ -59,12 +59,55 @@ function XmlSalesUploadFormInner({
     async function fetchSpedFiles() {
       try {
         setLoadingError(null);
-        const res = await fetch("/api/sped/list");
+        
+        // Adicionar timeout e melhor tratamento de erro
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos
+        
+        let res: Response;
+        try {
+          res = await fetch("/api/sped/list", {
+            signal: controller.signal,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+          clearTimeout(timeoutId);
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          
+          if (fetchError instanceof Error) {
+            if (fetchError.name === 'AbortError') {
+              throw new Error("Timeout: A requisição demorou muito para responder. Verifique se o servidor está funcionando.");
+            }
+            if (fetchError.message.includes("Failed to fetch") || 
+                fetchError.message.includes("Load failed") ||
+                fetchError.message.includes("NetworkError")) {
+              throw new Error(
+                "Não foi possível conectar ao servidor. " +
+                "Isso pode indicar: (1) Variáveis de ambiente não configuradas no Vercel, " +
+                "(2) Problema de rede, ou (3) A rota de API não está disponível. " +
+                "Verifique os logs do Vercel para mais detalhes."
+              );
+            }
+            throw fetchError;
+          }
+          throw new Error("Erro desconhecido ao fazer requisição");
+        }
         
         if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}));
-          const errorMessage = errorData.error || `Erro ${res.status}: ${res.statusText}`;
-          throw new Error(errorMessage);
+          let errorData: any = {};
+          try {
+            errorData = await res.json();
+          } catch {
+            // Se não conseguir parsear JSON, usar o texto da resposta
+            const text = await res.text().catch(() => "");
+            throw new Error(`Erro ${res.status}: ${res.statusText}${text ? ` - ${text.substring(0, 200)}` : ""}`);
+          }
+          
+          const errorMessage = errorData.error || errorData.detail || `Erro ${res.status}: ${res.statusText}`;
+          const errorDetail = errorData.detail ? `\n\nDetalhes: ${errorData.detail}` : "";
+          throw new Error(`${errorMessage}${errorDetail}`);
         }
         
         const data = await res.json();
@@ -76,13 +119,7 @@ function XmlSalesUploadFormInner({
       } catch (error) {
         console.error("Erro ao buscar arquivos SPED:", error);
         if (error instanceof Error) {
-          if (error.message.includes("Failed to fetch") || error.message.includes("Load failed")) {
-            setLoadingError(
-              "Não foi possível conectar ao servidor. Verifique se o servidor está rodando e se as variáveis de ambiente estão configuradas corretamente no Vercel."
-            );
-          } else {
-            setLoadingError(`Erro ao carregar arquivos SPED: ${error.message}`);
-          }
+          setLoadingError(error.message);
         } else {
           setLoadingError("Erro desconhecido ao carregar arquivos SPED.");
         }
