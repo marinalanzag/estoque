@@ -110,18 +110,18 @@ export default async function DiagnosticoPage({ params }: PageProps) {
             Documentos de Saída
           </h3>
           <p className="text-2xl font-bold text-gray-900">{totalDocumentosSaida}</p>
-          <p className="text-xs text-gray-500 mt-1">ind_oper = '1'</p>
+          <p className="text-xs text-gray-500 mt-1">ind_oper = &apos;1&apos;</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
           <h3 className="text-sm font-medium text-gray-500 mb-1">
-            Itens com movement_type='saida'
+            Itens com movement_type=&apos;saida&apos;
           </h3>
           <p className="text-2xl font-bold text-blue-600">{totalItemsSaida}</p>
           <p className="text-xs text-gray-500 mt-1">Total qtd: {totalQtdSaida.toFixed(2)}</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
           <h3 className="text-sm font-medium text-gray-500 mb-1">
-            Itens sem tipo (ind_oper='1')
+            Itens sem tipo (ind_oper=&apos;1&apos;)
           </h3>
           <p className="text-2xl font-bold text-orange-600">{totalItemsSemTipo}</p>
           <p className="text-xs text-gray-500 mt-1">Precisam de movement_type</p>
@@ -139,7 +139,7 @@ export default async function DiagnosticoPage({ params }: PageProps) {
       {itemsSaida && itemsSaida.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-3">
-            Amostra de Itens de Saída (movement_type='saida')
+            Amostra de Itens de Saída (movement_type=&apos;saida&apos;)
           </h3>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -172,10 +172,10 @@ export default async function DiagnosticoPage({ params }: PageProps) {
       {itemsSemTipo && itemsSemTipo.length > 0 && (
         <div className="bg-orange-50 rounded-lg border border-orange-200 p-4 mb-6">
           <h3 className="text-lg font-semibold text-orange-900 mb-2">
-            ⚠️ Itens sem movement_type (mas com ind_oper='1')
+            ⚠️ Itens sem movement_type (mas com ind_oper=&apos;1&apos;)
           </h3>
           <p className="text-sm text-orange-800 mb-3">
-            Estes itens têm ind_oper='1' (saída) mas não têm movement_type definido.
+            Estes itens têm ind_oper=&apos;1&apos; (saída) mas não têm movement_type definido.
             A VIEW deve usar ind_oper como fallback, mas é melhor ter movement_type explícito.
           </p>
           <div className="overflow-x-auto">
@@ -210,16 +210,16 @@ export default async function DiagnosticoPage({ params }: PageProps) {
         </h3>
         <ul className="space-y-2 text-sm text-blue-800">
           {totalDocumentosSaida === 0 && (
-            <li>❌ <strong>Problema:</strong> Nenhum documento com ind_oper='1' encontrado. Verifique se o SPED foi importado corretamente.</li>
+            <li>❌ <strong>Problema:</strong> Nenhum documento com ind_oper=&apos;1&apos; encontrado. Verifique se o SPED foi importado corretamente.</li>
           )}
           {totalDocumentosSaida > 0 && totalItemsSaida === 0 && (
-            <li>⚠️ <strong>Atenção:</strong> Existem {totalDocumentosSaida} documentos de saída, mas nenhum item com movement_type='saida'. Os XMLs podem não ter sido importados ou não foram vinculados corretamente.</li>
+            <li>⚠️ <strong>Atenção:</strong> Existem {totalDocumentosSaida} documentos de saída, mas nenhum item com movement_type=&apos;saida&apos;. Os XMLs podem não ter sido importados ou não foram vinculados corretamente.</li>
           )}
           {totalItemsSaida > 0 && (
-            <li>✅ <strong>OK:</strong> {totalItemsSaida} itens de saída encontrados com movement_type='saida'.</li>
+            <li>✅ <strong>OK:</strong> {totalItemsSaida} itens de saída encontrados com movement_type=&apos;saida&apos;.</li>
           )}
           {totalItemsSemTipo > 0 && (
-            <li>⚠️ <strong>Atenção:</strong> {totalItemsSemTipo} itens têm ind_oper='1' mas não têm movement_type. A VIEW deve usar ind_oper como fallback.</li>
+            <li>⚠️ <strong>Atenção:</strong> {totalItemsSemTipo} itens têm ind_oper=&apos;1&apos; mas não têm movement_type. A VIEW deve usar ind_oper como fallback.</li>
           )}
         </ul>
       </div>
