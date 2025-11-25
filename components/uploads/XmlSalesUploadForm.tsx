@@ -146,9 +146,8 @@ function XmlSalesUploadFormInner({
       return;
     }
 
-    // Aumentar o tamanho do lote para processar mais arquivos de uma vez
-    // Se houver muitos arquivos, ainda divide em lotes para evitar timeout
-    const MAX_FILES_PER_BATCH = files.length > 10000 ? 5000 : files.length;
+    // Limitar cada lote para evitar estouro de payload no servidor/edge
+    const MAX_FILES_PER_BATCH = 300;
     const filesArray = Array.from(files);
     const batches = chunkArray(filesArray, MAX_FILES_PER_BATCH);
 
