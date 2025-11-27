@@ -131,7 +131,7 @@ export default async function MovimentacoesSaidasPage({
 
     if (xmlImports && xmlImports.length > 0) {
       // Buscar nomes dos arquivos SPED relacionados
-      const spedFileIds = [...new Set(xmlImports.map(imp => imp.sped_file_id).filter(Boolean))];
+      const spedFileIds = Array.from(new Set(xmlImports.map(imp => imp.sped_file_id).filter(Boolean)));
       const spedFilesMap = new Map<string, string>();
       
       if (spedFileIds.length > 0) {

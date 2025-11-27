@@ -22,7 +22,7 @@ export async function GET() {
     }
 
     // Buscar nomes dos arquivos SPED relacionados
-    const spedFileIds = [...new Set((imports || []).map(imp => imp.sped_file_id).filter(Boolean))];
+    const spedFileIds = Array.from(new Set((imports || []).map(imp => imp.sped_file_id).filter(Boolean)));
     const spedFilesMap = new Map<string, string>();
     
     if (spedFileIds.length > 0) {
