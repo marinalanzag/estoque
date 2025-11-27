@@ -155,8 +155,8 @@ async function fetchEntryAggregates(
       console.log('[DEBUG CONSOLIDACAO ENTRADA 842]', {
         documentItemId: entry.documentItemId ?? (entry as any).document_item_id,
         cod_item: codItem,
-        qtd_nf: entry.qtd_nf ?? entry.quantidade_nf ?? null,
-        qtd_ajustada: entry.qtd_ajustada ?? null,
+        quantidade_nf: entry.quantidade_nf ?? null,
+        qtd_produto: entry.qtd_produto ?? null,
         adjusted_qty: entry.adjusted_qty ?? (entry as any).adjustedQty ?? null,
         qtyUsada,
         unitCost,
