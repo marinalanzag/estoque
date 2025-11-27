@@ -1,7 +1,11 @@
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
-import { normalizeCodItem } from "@/lib/utils";
+import { normalizeCodItem, fetchProductDescriptions } from "@/lib/utils";
 import ExitsTable from "@/components/movements/ExitsTable";
 import SaidasFilter from "@/components/movements/SaidasFilter";
+import { cookies } from "next/headers";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const PAGE_SIZE = 1000;
 
@@ -27,6 +31,7 @@ interface SaidasPageProps {
   searchParams?: {
     fileId?: string;
     importId?: string | string[];
+    groupKey?: string;
   };
 }
 
@@ -34,12 +39,32 @@ export default async function MovimentacoesSaidasPage({
   searchParams,
 }: SaidasPageProps) {
   const supabaseAdmin = getSupabaseAdmin();
+  const cookieStore = cookies();
+  const cookieGroupKey = cookieStore.get("selectedXmlGroupKey")?.value ?? null;
+  const cookieImportIdsRaw =
+    cookieStore.get("selectedXmlImportIds")?.value ?? null;
+  const cookieImportIds = cookieImportIdsRaw
+    ? cookieImportIdsRaw.split(",").filter(Boolean)
+    : [];
 
-  // Buscar arquivos SPED disponíveis
-  const { data: spedFiles } = await supabaseAdmin
+  // Buscar período ativo
+  const { data: activePeriod } = await supabaseAdmin
+    .from("periods")
+    .select("id")
+    .eq("is_active", true)
+    .single();
+
+  // Buscar arquivos SPED do período ativo (ou todos se não houver período ativo)
+  const spedQuery = supabaseAdmin
     .from("sped_files")
     .select("id, name, uploaded_at")
     .order("uploaded_at", { ascending: false });
+
+  if (activePeriod) {
+    spedQuery.eq("period_id", activePeriod.id);
+  }
+
+  const { data: spedFiles } = await spedQuery;
 
   if (!spedFiles || spedFiles.length === 0) {
     return (
@@ -69,28 +94,137 @@ export default async function MovimentacoesSaidasPage({
     );
   }
 
-  // Buscar importações de XMLs para este SPED
-  const { data: xmlImports } = await supabaseAdmin
-    .from("xml_sales_imports")
-    .select("id, label, total_xmls, total_items, created_at")
-    .eq("sped_file_id", selectedFileId)
-    .order("created_at", { ascending: false });
+  // Buscar grupos de importações de XMLs (usando a mesma API da aba de importações)
+  // Isso agrupa por SPED e data, facilitando a seleção
+  let groupedXmlImports: Array<{
+    key: string;
+    sped_file_id: string;
+    sped_name: string | null;
+    date: string;
+    imports: Array<{
+      id: string;
+      label: string | null;
+      total_xmls: number;
+      total_items: number;
+      created_at: string;
+      period_id: string | null;
+      sped_file_id: string | null;
+    }>;
+    total_xmls: number;
+    total_items: number;
+    all_linked: boolean;
+    import_ids: string[];
+  }> = [];
 
-  // Suportar múltiplos importIds
+  try {
+    // Buscar todas as importações do período ativo
+    const xmlImportsQuery = supabaseAdmin
+      .from("xml_sales_imports")
+      .select("id, label, total_xmls, total_items, created_at, period_id, sped_file_id")
+      .order("created_at", { ascending: false });
+
+    if (activePeriod) {
+      xmlImportsQuery.eq("period_id", activePeriod.id);
+    }
+
+    const { data: xmlImports } = await xmlImportsQuery;
+
+    if (xmlImports && xmlImports.length > 0) {
+      // Buscar nomes dos arquivos SPED relacionados
+      const spedFileIds = [...new Set(xmlImports.map(imp => imp.sped_file_id).filter(Boolean))];
+      const spedFilesMap = new Map<string, string>();
+      
+      if (spedFileIds.length > 0) {
+        const { data: spedFiles } = await supabaseAdmin
+          .from("sped_files")
+          .select("id, name")
+          .in("id", spedFileIds);
+        
+        spedFiles?.forEach(file => {
+          spedFilesMap.set(file.id, file.name);
+        });
+      }
+
+      // Agrupar imports por SPED e data (mesmo dia) - mesma lógica da API
+      const groupedMap = new Map<string, typeof groupedXmlImports[0]>();
+      
+      xmlImports.forEach(imp => {
+        const date = new Date(imp.created_at).toISOString().split('T')[0]; // YYYY-MM-DD
+        const key = `${imp.sped_file_id || 'null'}_${date}`;
+        
+        if (!groupedMap.has(key)) {
+          groupedMap.set(key, {
+            key,
+            sped_file_id: imp.sped_file_id || '',
+            sped_name: spedFilesMap.get(imp.sped_file_id || '') || null,
+            date,
+            imports: [],
+            total_xmls: 0,
+            total_items: 0,
+            all_linked: true,
+            import_ids: [],
+          });
+        }
+
+        const group = groupedMap.get(key)!;
+        group.imports.push(imp);
+        group.total_xmls += imp.total_xmls || 0;
+        group.total_items += imp.total_items || 0;
+        group.import_ids.push(imp.id);
+        
+        if (!imp.period_id) {
+          group.all_linked = false;
+        }
+      });
+
+      // Converter para array e ordenar por data (mais recente primeiro)
+      groupedXmlImports = Array.from(groupedMap.values())
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
+
+    console.log(`[saidas/page] Período ativo: ${activePeriod?.id || "nenhum"}`);
+    console.log(`[saidas/page] Grupos de importações encontrados: ${groupedXmlImports.length}`);
+  } catch (error) {
+    console.error(`[saidas/page] Erro ao buscar grupos de importações:`, error);
+  }
+
+  // Suportar seleção por grupo (groupKey) ou por importIds individuais
+  const requestedGroupKey = searchParams?.groupKey as string | undefined;
   const requestedImportIds = searchParams?.importId
     ? Array.isArray(searchParams.importId)
       ? searchParams.importId
       : [searchParams.importId]
     : null;
 
-  const selectedImportIds =
-    requestedImportIds && xmlImports
-      ? requestedImportIds.filter((id) =>
-          xmlImports.some((imp) => imp.id === id)
-        )
-      : null;
+  let selectedGroupKey = requestedGroupKey ?? null;
+  if (
+    !selectedGroupKey &&
+    cookieGroupKey &&
+    groupedXmlImports.some((group) => group.key === cookieGroupKey)
+  ) {
+    selectedGroupKey = cookieGroupKey;
+  }
 
-  // Se nenhum foi selecionado, usar "Todas as importações" (null)
+  let selectedImportIds: string[] | null = null;
+
+  if (selectedGroupKey) {
+    const selectedGroup = groupedXmlImports.find(
+      (group) => group.key === selectedGroupKey
+    );
+    if (selectedGroup) {
+      selectedImportIds = selectedGroup.import_ids;
+      console.log(
+        `[saidas/page] Grupo selecionado: ${selectedGroup.key}, ${selectedImportIds.length} imports`
+      );
+    }
+  } else if (requestedImportIds) {
+    const allImportIds = groupedXmlImports.flatMap((g) => g.import_ids);
+    selectedImportIds = requestedImportIds.filter((id) =>
+      allImportIds.includes(id)
+    );
+  } else if (cookieImportIds.length > 0) {
+    selectedImportIds = cookieImportIds;
+  }
 
   // Buscar produtos do SPED para pegar descrições
   const products = await fetchAllRows(async (from, to) => {
@@ -106,7 +240,7 @@ export default async function MovimentacoesSaidasPage({
     return data ?? [];
   });
 
-  // Criar mapa de produtos para buscar descrições
+  // Criar mapa de produtos para buscar descrições (SPED - PRIORIDADE 1)
   const productMap = new Map<
     string,
     { descr_item?: string | null; unid_inv?: string | null }
@@ -133,10 +267,12 @@ export default async function MovimentacoesSaidasPage({
 
   if (selectedImportIds && selectedImportIds.length > 0) {
     // Se importações específicas foram selecionadas, buscar diretamente por xml_import_id
+    console.log(`[saidas/page] Buscando itens de ${selectedImportIds.length} importações selecionadas`);
     // Buscar em lotes para evitar query muito grande
     const BATCH_SIZE = 50;
     for (let i = 0; i < selectedImportIds.length; i += BATCH_SIZE) {
       const batchIds = selectedImportIds.slice(i, i + BATCH_SIZE);
+      console.log(`[saidas/page] Buscando lote ${i / BATCH_SIZE + 1} com ${batchIds.length} importIds`);
 
       const batchItems = await fetchAllRows(async (from, to) => {
         const { data, error } = await supabaseAdmin
@@ -147,6 +283,7 @@ export default async function MovimentacoesSaidasPage({
           .range(from, to);
 
         if (error) {
+          console.error(`[saidas/page] Erro ao buscar itens:`, error);
           throw new Error(`Erro ao buscar itens de saída: ${error.message}`);
         }
 
@@ -159,18 +296,21 @@ export default async function MovimentacoesSaidasPage({
         }));
       });
 
+      console.log(`[saidas/page] Lote ${i / BATCH_SIZE + 1}: ${batchItems.length} itens encontrados`);
       exitItems.push(...batchItems);
     }
   } else {
-    // Se "Todas as importações", buscar todos os xml_import_ids deste sped_file_id
-    // e depois buscar os document_items de todas essas importações
-    if (xmlImports && xmlImports.length > 0) {
-      const allImportIds = xmlImports.map((imp) => imp.id);
+    // Se "Todas as importações", buscar todos os xml_import_ids do período ativo
+    // (independente do SPED, porque o período é o que importa)
+    if (groupedXmlImports && groupedXmlImports.length > 0) {
+      const allImportIds = groupedXmlImports.flatMap(g => g.import_ids);
+      console.log(`[saidas/page] Buscando itens de TODAS as ${allImportIds.length} importações do período ativo (${groupedXmlImports.length} grupos)`);
 
       // Buscar em lotes para evitar query muito grande
       const BATCH_SIZE = 50;
       for (let i = 0; i < allImportIds.length; i += BATCH_SIZE) {
         const batchIds = allImportIds.slice(i, i + BATCH_SIZE);
+        console.log(`[saidas/page] Buscando lote ${i / BATCH_SIZE + 1} com ${batchIds.length} importIds`);
 
         const batchItems = await fetchAllRows(async (from, to) => {
           const { data, error } = await supabaseAdmin
@@ -181,6 +321,7 @@ export default async function MovimentacoesSaidasPage({
             .range(from, to);
 
           if (error) {
+            console.error(`[saidas/page] Erro ao buscar itens:`, error);
             throw new Error(`Erro ao buscar itens de saída: ${error.message}`);
           }
 
@@ -193,9 +334,26 @@ export default async function MovimentacoesSaidasPage({
           }));
         });
 
+        console.log(`[saidas/page] Lote ${i / BATCH_SIZE + 1}: ${batchItems.length} itens encontrados`);
         exitItems.push(...batchItems);
       }
+    } else {
+      console.log(`[saidas/page] Nenhuma importação encontrada para o período ativo`);
     }
+  }
+
+  console.log(`[saidas/page] Total de itens brutos encontrados: ${exitItems.length}`);
+
+  // Buscar descrições faltantes no cadastro de produtos (PRIORIDADE 2)
+  const allCodItems = Array.from(new Set(exitItems.map(item => normalizeCodItem(item.cod_item))));
+  const codItemsSemDescricao = allCodItems.filter(cod => {
+    const productInfo = productMap.get(cod);
+    return !productInfo?.descr_item || productInfo.descr_item.trim() === "";
+  });
+  
+  let catalogDescriptions = new Map<string, string>();
+  if (codItemsSemDescricao.length > 0) {
+    catalogDescriptions = await fetchProductDescriptions(supabaseAdmin, codItemsSemDescricao);
   }
 
   // Consolidar por cod_item
@@ -220,10 +378,13 @@ export default async function MovimentacoesSaidasPage({
       current.qtd_total += item.qtd;
       current.valor_total += item.vl_item;
     } else {
+      // Ordem de prioridade: 1) SPED (productInfo), 2) Cadastro de produtos, 3) descr_compl do XML, 4) "[Sem descrição]"
+      const descrFromCatalog = catalogDescriptions.get(codItemNormalizado);
       consolidated.set(codItemNormalizado, {
         cod_item: codItemNormalizado,
         descr_item:
           productInfo?.descr_item ||
+          descrFromCatalog ||
           item.descr_compl ||
           "[Sem descrição]",
         unid: productInfo?.unid_inv || item.unid || null,
@@ -270,12 +431,14 @@ export default async function MovimentacoesSaidasPage({
       </div>
 
       {/* Filtro de SPED e Importação */}
-      <SaidasFilter
-        spedFiles={spedFiles}
-        xmlImports={xmlImports}
-        selectedFileId={selectedFileId}
-        selectedImportIds={selectedImportIds}
-      />
+        <SaidasFilter
+          spedFiles={spedFiles}
+          groupedXmlImports={groupedXmlImports}
+          selectedFileId={selectedFileId}
+          selectedGroupKey={selectedGroupKey}
+          selectedImportIds={selectedImportIds}
+          activePeriod={activePeriod}
+        />
 
       {/* Cards de resumo */}
       <div className="grid md:grid-cols-3 gap-4">

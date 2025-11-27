@@ -155,6 +155,7 @@ export async function POST(req: NextRequest) {
 
   let currentDocIndex: number | null = null;
   let currentInvIndex: number | null = null;
+  let lastCodItem0200: string | null = null; // Rastrear último cod_item do 0200 para o 0220
 
   for (const line of lines) {
     // Remover espaços em branco no início/fim e dividir por |
@@ -203,9 +204,12 @@ export async function POST(req: NextRequest) {
         const cod_lst_idx = 9 + shift;
         const aliq_idx = 10 + shift;
 
+        const codItem = normalizeCodItem(parts[cod_item_idx] || "");
+        lastCodItem0200 = codItem; // Salvar para usar no 0220
+
         products.push({
           sped_file_id: spedFile.id,
-          cod_item: normalizeCodItem(parts[cod_item_idx] || ""),
+          cod_item: codItem,
           descr_item: parts[descr_idx] || "",
           unid_inv: parts[unid_idx] || undefined,
           tp_item: parts[tp_item_idx] || undefined,
@@ -217,17 +221,30 @@ export async function POST(req: NextRequest) {
         break;
       }
       case "0220": {
+        // O 0220 não tem cod_item próprio - herda do 0200 anterior
+        if (!lastCodItem0200) {
+          console.warn("⚠ 0220 encontrado mas não há 0200 anterior");
+          break;
+        }
+
         const hasLeadingPipe = parts[0] === "";
         const baseIdx = hasLeadingPipe ? 2 : 1;
-        const cod_item_idx = baseIdx;
-        const unid_conv_idx = baseIdx + 1;
-        const fat_conv_idx = baseIdx + 2;
+        const unid_conv_idx = baseIdx;
+        const fat_conv_idx = baseIdx + 1;
+
+        const unid_conv = (parts[unid_conv_idx] || "").trim();
+        const fat_conv = parseNumberBR(parts[fat_conv_idx]) ?? 1;
+
+        if (!unid_conv) {
+          console.warn("⚠ 0220 sem unid_conv, ignorando");
+          break;
+        }
 
         conversions.push({
           sped_file_id: spedFile.id,
-          cod_item: normalizeCodItem(parts[cod_item_idx] || ""),
-          unid_conv: parts[unid_conv_idx] || "",
-          fat_conv: parseNumberBR(parts[fat_conv_idx]) ?? 1
+          cod_item: lastCodItem0200, // Usar o cod_item do 0200 anterior
+          unid_conv: unid_conv,
+          fat_conv: fat_conv
         });
         break;
       }

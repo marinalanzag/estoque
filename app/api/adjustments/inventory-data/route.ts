@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
-import { normalizeCodItem } from "@/lib/utils";
+import { normalizeCodItem, fetchProductDescriptions } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -246,7 +246,7 @@ export async function GET(req: NextRequest) {
       item.estoque_final = item.estoque_teorico + item.ajustes_recebidos - item.ajustes_fornecidos;
     });
 
-    // Buscar descrições dos produtos
+    // Buscar descrições dos produtos do SPED
     const { data: products } = await supabaseAdmin
       .from("products")
       .select("cod_item, descr_item")
@@ -255,10 +255,29 @@ export async function GET(req: NextRequest) {
     products?.forEach((prod) => {
       const codItem = normalizeCodItem(prod.cod_item);
       const item = inventory.get(codItem);
-      if (item) {
+      if (item && prod.descr_item) {
         item.descr_item = prod.descr_item;
       }
     });
+
+    // Buscar descrições faltantes no cadastro de produtos (product_catalog)
+    const itemsSemDescricao = Array.from(inventory.values())
+      .filter((item) => !item.descr_item || item.descr_item.trim() === "");
+    
+    if (itemsSemDescricao.length > 0) {
+      const codItemsSemDescricao = itemsSemDescricao.map((item) => item.cod_item);
+      const catalogDescriptions = await fetchProductDescriptions(
+        supabaseAdmin,
+        codItemsSemDescricao
+      );
+
+      catalogDescriptions.forEach((descr, codItem) => {
+        const item = inventory.get(codItem);
+        if (item && (!item.descr_item || item.descr_item.trim() === "")) {
+          item.descr_item = descr;
+        }
+      });
+    }
 
     // Separar em negativos e positivos
     const negativos = Array.from(inventory.values())

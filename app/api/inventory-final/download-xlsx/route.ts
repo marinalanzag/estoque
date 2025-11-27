@@ -11,6 +11,8 @@ export async function GET(req: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin();
     const searchParams = req.nextUrl.searchParams;
     const spedFileId = searchParams.get("sped_file_id");
+    const periodId = searchParams.get("period_id");
+    const xmlImportIdsParam = searchParams.get("xml_import_ids");
 
     if (!spedFileId) {
       return NextResponse.json(
@@ -19,8 +21,21 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const cookieImportIdsRaw =
+      req.cookies.get("selectedXmlImportIds")?.value ?? null;
+    const cookieImportIds = cookieImportIdsRaw
+      ? cookieImportIdsRaw.split(",").filter(Boolean)
+      : null;
+    const xmlImportIds = xmlImportIdsParam
+      ? xmlImportIdsParam.split(",").filter(Boolean)
+      : cookieImportIds ?? undefined;
+
     // Buscar dados do inventário final
-    const { items, summary } = await getInventoryFinalData(supabaseAdmin, spedFileId);
+    const { items, summary } = await getInventoryFinalData(
+      spedFileId,
+      periodId,
+      { xmlImportIds }
+    );
 
     // Buscar informações do arquivo SPED
     const { data: spedFile } = await supabaseAdmin

@@ -1,5 +1,6 @@
 import DashboardTabs from "@/components/dashboard/DashboardTabs";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
+import { fetchProductDescriptions } from "@/lib/utils";
 
 const PAGE_SIZE = 1000;
 
@@ -110,10 +111,28 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     }
   >();
 
+  // Buscar descrições faltantes no cadastro de produtos (PRIORIDADE 2)
+  const codItemsSemDescricao = stockData
+    .filter(item => {
+      const descrFromStock = item.descr_item?.trim();
+      const descrFromSped = productDescriptionMap.get(item.cod_item);
+      return (!descrFromStock || descrFromStock === "") && 
+             (!descrFromSped || descrFromSped.trim() === "");
+    })
+    .map(item => item.cod_item);
+  
+  let catalogDescriptions = new Map<string, string>();
+  if (codItemsSemDescricao.length > 0) {
+    catalogDescriptions = await fetchProductDescriptions(supabaseAdmin, codItemsSemDescricao);
+  }
+
   for (const item of stockData) {
+    // Ordem de prioridade: 1) item.descr_item, 2) SPED (productDescriptionMap), 3) Cadastro de produtos, 4) "[Sem descrição]"
+    const descrFromCatalog = catalogDescriptions.get(item.cod_item);
     const descr =
       item.descr_item?.trim() ||
       productDescriptionMap.get(item.cod_item) ||
+      descrFromCatalog ||
       "[Sem descrição]";
     const quantity = item.qtd ?? 0;
     const lineUnitCost = item.unit_cost ?? 0;

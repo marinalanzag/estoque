@@ -9,32 +9,46 @@ interface SpedFile {
   uploaded_at: string;
 }
 
-interface XmlImport {
-  id: string;
-  label: string | null;
+interface GroupedXmlImport {
+  key: string;
+  sped_file_id: string;
+  sped_name: string | null;
+  date: string;
+  imports: Array<{
+    id: string;
+    label: string | null;
+    total_xmls: number;
+    total_items: number;
+    created_at: string;
+    period_id: string | null;
+    sped_file_id: string | null;
+  }>;
   total_xmls: number;
   total_items: number;
-  created_at: string;
+  all_linked: boolean;
+  import_ids: string[];
 }
 
 interface SaidasFilterProps {
   spedFiles: SpedFile[];
-  xmlImports: XmlImport[] | null;
+  groupedXmlImports: GroupedXmlImport[];
   selectedFileId: string;
+  selectedGroupKey: string | null;
   selectedImportIds: string[] | null;
+  activePeriod?: { id: string } | null;
 }
 
 export default function SaidasFilter({
   spedFiles,
-  xmlImports,
+  groupedXmlImports,
   selectedFileId,
+  selectedGroupKey,
   selectedImportIds,
+  activePeriod,
 }: SaidasFilterProps) {
   const router = useRouter();
   const [fileId, setFileId] = useState(selectedFileId);
-  const [importIds, setImportIds] = useState<string[]>(
-    selectedImportIds || []
-  );
+  const [groupKey, setGroupKey] = useState<string>(selectedGroupKey || "");
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -42,25 +56,46 @@ export default function SaidasFilter({
     const params = new URLSearchParams();
     params.set("fileId", fileId);
 
-    if (importIds.length > 0) {
-      importIds.forEach((id) => {
-        params.append("importId", id);
-      });
+    if (groupKey) {
+      params.set("groupKey", groupKey);
     }
+
+    const persistSelection = () => {
+      if (typeof document === "undefined") return;
+      const maxAge = 60 * 60 * 24 * 365;
+
+      if (!groupKey && (!selectedImportIds || selectedImportIds.length === 0)) {
+        document.cookie = `selectedXmlGroupKey=; path=/; max-age=0`;
+        document.cookie = `selectedXmlImportIds=; path=/; max-age=0`;
+        return;
+      }
+
+      const group = groupKey
+        ? groupedXmlImports.find((g) => g.key === groupKey)
+        : null;
+      const importIds = group
+        ? group.import_ids
+        : selectedImportIds && selectedImportIds.length > 0
+        ? selectedImportIds
+        : [];
+
+      if (groupKey) {
+        document.cookie = `selectedXmlGroupKey=${encodeURIComponent(
+          groupKey
+        )}; path=/; max-age=${maxAge}`;
+      }
+      document.cookie = `selectedXmlImportIds=${encodeURIComponent(
+        importIds.join(",")
+      )}; path=/; max-age=${maxAge}`;
+    };
+
+    persistSelection();
 
     router.push(`/movimentacoes/saidas?${params.toString()}`);
   };
 
-  const handleImportChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedOptions = Array.from(e.target.selectedOptions);
-    const values = selectedOptions.map((option) => option.value);
-    
-    // Se "Todas as importações" (valor vazio) estiver selecionado, limpar outras seleções
-    if (values.includes("")) {
-      setImportIds([]);
-    } else {
-      setImportIds(values);
-    }
+  const handleGroupChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setGroupKey(e.target.value);
   };
 
   return (
@@ -85,28 +120,30 @@ export default function SaidasFilter({
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Importação de XMLs (segure Ctrl/Cmd para selecionar múltiplas)
+            Grupo de Importações de XMLs (agrupados por SPED e data)
           </label>
-          {xmlImports && xmlImports.length > 0 ? (
+          {groupedXmlImports && groupedXmlImports.length > 0 ? (
             <select
-              multiple
-              size={Math.min(xmlImports.length + 1, 10)}
-              value={importIds}
-              onChange={handleImportChange}
+              value={groupKey}
+              onChange={handleGroupChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
             >
-              <option value="">Todas as importações</option>
-              {xmlImports.map((imp) => (
-                <option key={imp.id} value={imp.id}>
-                  {imp.label || "Sem descrição"} -{" "}
-                  {new Date(imp.created_at).toLocaleString("pt-BR")} (
-                  {imp.total_xmls} XMLs, {imp.total_items} itens)
-                </option>
-              ))}
+              <option value="">Todas as importações do período</option>
+              {groupedXmlImports.map((group) => {
+                const dateStr = new Date(group.date).toLocaleDateString("pt-BR");
+                const importCount = group.imports.length;
+                return (
+                  <option key={group.key} value={group.key}>
+                    {group.sped_name || "SPED desconhecido"} - {dateStr} - {group.total_xmls} XMLs, {group.total_items} itens
+                    {importCount > 1 && ` (${importCount} imports)`}
+                    {group.all_linked && " ✓ vinculado"}
+                  </option>
+                );
+              })}
             </select>
           ) : (
             <p className="text-sm text-gray-500 py-2">
-              Nenhuma importação encontrada
+              Nenhum grupo de importação encontrado para o período ativo
             </p>
           )}
         </div>

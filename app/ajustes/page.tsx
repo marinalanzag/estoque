@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
-import AdjustmentsTable from "@/components/adjustments/AdjustmentsTable";
+import AdjustmentsPageClient from "@/components/adjustments/AdjustmentsPageClient";
 
 interface AjustesPageProps {
   searchParams?: {
@@ -50,17 +50,26 @@ export default async function AjustesPage({ searchParams }: AjustesPageProps) {
 
   const selectedFile = spedFiles.find((f) => f.id === selectedFileId);
 
-  // Buscar ajustes já feitos
-  const { data: adjustments } = await supabaseAdmin
+  // Buscar período ativo para garantir persistência
+  const { data: activePeriod } = await supabaseAdmin
+    .from("periods")
+    .select("id")
+    .eq("is_active", true)
+    .single();
+
+  // Buscar ajustes já feitos (do arquivo SPED e do período ativo se existir)
+  const adjustmentsQuery = supabaseAdmin
     .from("code_offset_adjustments")
-    .select("id, cod_negativo, cod_positivo, qtd_baixada, unit_cost, total_value, created_at")
+    .select("id, cod_negativo, cod_positivo, qtd_baixada, unit_cost, total_value, created_at, period_id")
     .eq("sped_file_id", selectedFileId)
     .order("created_at", { ascending: false });
 
-  const totalAjustes = (adjustments ?? []).reduce(
-    (acc, adj) => acc + Number(adj.total_value ?? 0),
-    0
-  );
+  // Se houver período ativo, filtrar por ele também para garantir que os ajustes sejam do período correto
+  if (activePeriod) {
+    adjustmentsQuery.eq("period_id", activePeriod.id);
+  }
+
+  const { data: adjustments } = await adjustmentsQuery;
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -102,29 +111,8 @@ export default async function AjustesPage({ searchParams }: AjustesPageProps) {
         </form>
       </div>
 
-      {/* Card de resumo */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-blue-700">Valor total das baixas</p>
-            <p className="text-2xl font-semibold text-blue-900">
-              {totalAjustes.toLocaleString("pt-BR", {
-                style: "currency",
-                currency: "BRL",
-              })}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-blue-700">Total de ajustes</p>
-            <p className="text-2xl font-semibold text-blue-900">
-              {adjustments?.length ?? 0}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabela de ajustes */}
-      <AdjustmentsTable
+      {/* Componente Client que gerencia estado e atualização em tempo real */}
+      <AdjustmentsPageClient
         spedFileId={selectedFileId}
         fileName={selectedFile?.name ?? "Arquivo SPED"}
         initialAdjustments={adjustments ?? []}

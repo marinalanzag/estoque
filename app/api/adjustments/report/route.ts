@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
-import { normalizeCodItem } from "@/lib/utils";
+import { normalizeCodItem, fetchProductDescriptions } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,18 +18,32 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Buscar ajustes
-    const { data: adjustments, error: adjError } = await supabaseAdmin
+    // Buscar período ativo para garantir persistência
+    const { data: activePeriod } = await supabaseAdmin
+      .from("periods")
+      .select("id")
+      .eq("is_active", true)
+      .single();
+
+    // Buscar ajustes (do arquivo SPED e do período ativo se existir)
+    const adjustmentsQuery = supabaseAdmin
       .from("code_offset_adjustments")
       .select("id, cod_negativo, cod_positivo, qtd_baixada, unit_cost, total_value, created_at")
       .eq("sped_file_id", spedFileId)
       .order("created_at", { ascending: false });
 
+    // Se houver período ativo, filtrar por ele também
+    if (activePeriod) {
+      adjustmentsQuery.eq("period_id", activePeriod.id);
+    }
+
+    const { data: adjustments, error: adjError } = await adjustmentsQuery;
+
     if (adjError) {
       throw new Error(`Erro ao buscar ajustes: ${adjError.message}`);
     }
 
-    // Buscar descrições dos produtos
+    // Buscar descrições dos produtos do SPED (PRIORIDADE 1)
     const { data: products } = await supabaseAdmin
       .from("products")
       .select("cod_item, descr_item")
@@ -38,20 +52,46 @@ export async function GET(req: NextRequest) {
     const productMap = new Map<string, string>();
     products?.forEach((prod) => {
       const codItem = normalizeCodItem(prod.cod_item);
-      productMap.set(codItem, prod.descr_item || "[Sem descrição]");
+      if (prod.descr_item) {
+        productMap.set(codItem, prod.descr_item);
+      }
     });
+
+    // Buscar descrições faltantes no cadastro de produtos (PRIORIDADE 2)
+    const allCodItems = new Set<string>();
+    (adjustments ?? []).forEach((adj) => {
+      allCodItems.add(normalizeCodItem(adj.cod_negativo));
+      allCodItems.add(normalizeCodItem(adj.cod_positivo));
+    });
+
+    const codItemsSemDescricao = Array.from(allCodItems).filter(cod => {
+      return !productMap.get(cod) || productMap.get(cod) === "[Sem descrição]";
+    });
+
+    let catalogDescriptions = new Map<string, string>();
+    if (codItemsSemDescricao.length > 0) {
+      catalogDescriptions = await fetchProductDescriptions(supabaseAdmin, codItemsSemDescricao);
+    }
 
     // Montar relatório consolidado
     const report = (adjustments ?? []).map((adj) => {
       const codNegativo = normalizeCodItem(adj.cod_negativo);
       const codPositivo = normalizeCodItem(adj.cod_positivo);
 
+      // Ordem de prioridade: 1) SPED (productMap), 2) Cadastro de produtos, 3) "[Sem descrição]"
+      const descrNegativo = productMap.get(codNegativo) || 
+                           catalogDescriptions.get(codNegativo) || 
+                           "[Sem descrição]";
+      const descrPositivo = productMap.get(codPositivo) || 
+                           catalogDescriptions.get(codPositivo) || 
+                           "[Sem descrição]";
+
       return {
         id: adj.id,
         cod_negativo: codNegativo,
-        descr_negativo: productMap.get(codNegativo) || "[Sem descrição]",
+        descr_negativo: descrNegativo,
         cod_positivo: codPositivo,
-        descr_positivo: productMap.get(codPositivo) || "[Sem descrição]",
+        descr_positivo: descrPositivo,
         qtd_baixada: Number(adj.qtd_baixada),
         unit_cost: Number(adj.unit_cost),
         total_value: Number(adj.total_value),

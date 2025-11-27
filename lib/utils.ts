@@ -126,3 +126,43 @@ export function normalizeCodItem(cod_item: string | number | null | undefined): 
   return cod.padStart(6, "0");
 }
 
+/**
+ * Busca descrições do cadastro de produtos (product_catalog) para códigos que não têm descrição
+ * Retorna um Map com cod_item -> descr_item
+ */
+export async function fetchProductDescriptions(
+  supabaseAdmin: ReturnType<typeof import("@/lib/supabaseServer").getSupabaseAdmin>,
+  codItems: string[]
+): Promise<Map<string, string>> {
+  if (codItems.length === 0) {
+    return new Map();
+  }
+
+  const descriptionsMap = new Map<string, string>();
+  
+  // Normalizar códigos
+  const normalizedCodes = codItems.map(cod => normalizeCodItem(cod));
+  const uniqueCodes = Array.from(new Set(normalizedCodes));
+
+  // Buscar em lotes para evitar queries muito grandes
+  const batchSize = 500;
+  for (let i = 0; i < uniqueCodes.length; i += batchSize) {
+    const batch = uniqueCodes.slice(i, i + batchSize);
+    
+    const { data, error } = await supabaseAdmin
+      .from("product_catalog")
+      .select("cod_item, descr_item")
+      .in("cod_item", batch);
+
+    if (!error && data) {
+      data.forEach((item) => {
+        if (item.cod_item && item.descr_item) {
+          descriptionsMap.set(item.cod_item, item.descr_item);
+        }
+      });
+    }
+  }
+
+  return descriptionsMap;
+}
+

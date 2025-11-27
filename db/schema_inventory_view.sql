@@ -81,14 +81,24 @@ si as (
   group by cod_item
 ),
 -- 2) Consolidar entradas por sped_file_id e cod_item
+-- IMPORTANTE: Usar quantidade ajustada quando disponível, senão usar quantidade original
 entradas as (
   select
     d.sped_file_id,
     di.cod_item,
-    coalesce(sum(abs(di.movement_qty)), 0) as entradas,
-    coalesce(sum(coalesce(di.vl_item, 0)), 0) as valor_entradas
+    coalesce(sum(
+      coalesce(adj.adjusted_qty, abs(di.movement_qty))
+    ), 0) as entradas,
+    coalesce(sum(
+      case
+        when adj.adjusted_qty is not null and abs(di.movement_qty) > 0
+        then (coalesce(di.vl_item, 0) / abs(di.movement_qty)) * adj.adjusted_qty
+        else coalesce(di.vl_item, 0)
+      end
+    ), 0) as valor_entradas
   from document_items di
   inner join documents d on di.document_id = d.id
+  left join document_item_adjustments adj on di.id = adj.document_item_id
   where (di.movement_type = 'entrada' or (di.movement_type is null and d.ind_oper = '0'))
     and di.movement_qty is not null
     and d.sped_file_id is not null

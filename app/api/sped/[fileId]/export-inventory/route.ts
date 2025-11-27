@@ -14,6 +14,8 @@ export async function GET(
     const supabaseAdmin = getSupabaseAdmin();
     const searchParams = req.nextUrl.searchParams;
     const fileId = params.fileId;
+    const periodId = searchParams.get("period_id");
+    const xmlImportIdsParam = searchParams.get("xml_import_ids");
 
     if (!fileId) {
       return NextResponse.json(
@@ -27,7 +29,18 @@ export async function GET(
     const removeNegatives = searchParams.get("removeNegatives") === "true";
 
     // Buscar dados do inventário final
-    const { items } = await getInventoryFinalData(supabaseAdmin, fileId);
+    const cookieImportIdsRaw =
+      req.cookies.get("selectedXmlImportIds")?.value ?? null;
+    const cookieImportIds = cookieImportIdsRaw
+      ? cookieImportIdsRaw.split(",").filter(Boolean)
+      : null;
+    const xmlImportIds = xmlImportIdsParam
+      ? xmlImportIdsParam.split(",").filter(Boolean)
+      : cookieImportIds ?? undefined;
+
+    const { items } = await getInventoryFinalData(fileId, periodId, {
+      xmlImportIds,
+    });
 
     // Aplicar filtros
     let filteredItems = items;

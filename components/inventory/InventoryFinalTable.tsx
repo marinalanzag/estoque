@@ -34,6 +34,7 @@ export default function InventoryFinalTable({
   const [exportFormat, setExportFormat] = useState<"sped" | "xlsx" | "csv">("sped");
   const [removeZeros, setRemoveZeros] = useState(false);
   const [removeNegatives, setRemoveNegatives] = useState(false);
+  const [searchTerm, setSearchTerm] = useState<string>("");
 
   useEffect(() => {
     loadData();
@@ -266,6 +267,41 @@ export default function InventoryFinalTable({
         </div>
       </div>
 
+      {/* Campo de busca */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <label
+          htmlFor="searchItem"
+          className="block text-sm font-medium text-gray-700 mb-2"
+        >
+          Buscar por código ou descrição do item
+        </label>
+        <div className="relative">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg
+              className="h-5 w-5 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
+          <input
+            id="searchItem"
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Digite o código ou descrição do item..."
+            className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+          />
+        </div>
+      </div>
+
       {/* Tabela de itens */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
@@ -314,18 +350,64 @@ export default function InventoryFinalTable({
                     Nenhum item encontrado.
                   </td>
                 </tr>
-              ) : (
-                items.map((item) => {
+              ) : (() => {
+                // Filtrar itens baseado no termo de busca
+                const filteredItems = items.filter((item) => {
+                  if (!searchTerm.trim()) return true;
+                  const search = searchTerm.toLowerCase();
+                  return (
+                    item.cod_item.toLowerCase().includes(search) ||
+                    (item.descr_item?.toLowerCase().includes(search) ?? false)
+                  );
+                });
+
+                if (filteredItems.length === 0) {
+                  return (
+                    <tr>
+                      <td colSpan={11} className="px-6 py-8 text-center text-gray-500">
+                        Nenhum item encontrado com o termo de busca.
+                      </td>
+                    </tr>
+                  );
+                }
+
+                return filteredItems.map((item) => {
                   const ajustesLiquido = item.ajustes_recebidos - item.ajustes_fornecidos;
                   const isNegativo = item.estoque_final < 0;
+                  const temAjustes = item.ajustes_recebidos > 0 || item.ajustes_fornecidos > 0;
 
                   return (
                     <tr
                       key={item.cod_item}
-                      className={isNegativo ? "bg-red-50" : ""}
+                      className={`${
+                        isNegativo ? "bg-red-50" : ""
+                      } ${
+                        temAjustes ? "border-l-4 border-l-yellow-400" : ""
+                      }`}
                     >
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {item.cod_item}
+                        <div className="flex items-center gap-2">
+                          {item.cod_item}
+                          {temAjustes && (
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800"
+                              title={`Ajustes recebidos: ${item.ajustes_recebidos.toFixed(2)}, Ajustes fornecidos: ${item.ajustes_fornecidos.toFixed(2)}`}
+                            >
+                              <svg
+                                className="h-3 w-3 mr-1"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                              Ajustado
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
                         {item.descr_item || "[Sem descrição]"}
@@ -375,8 +457,8 @@ export default function InventoryFinalTable({
                       </td>
                     </tr>
                   );
-                })
-              )}
+                });
+              })()}
             </tbody>
           </table>
         </div>

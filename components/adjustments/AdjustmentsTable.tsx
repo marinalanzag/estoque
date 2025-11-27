@@ -30,16 +30,30 @@ interface AdjustmentsTableProps {
   spedFileId: string;
   fileName: string;
   initialAdjustments: Adjustment[];
+  onAdjustmentsChange?: (adjustments: Adjustment[]) => void;
 }
 
 export default function AdjustmentsTable({
   spedFileId,
   fileName,
   initialAdjustments,
+  onAdjustmentsChange,
 }: AdjustmentsTableProps) {
   const [negativos, setNegativos] = useState<InventoryItem[]>([]);
   const [positivos, setPositivos] = useState<InventoryItem[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>(initialAdjustments);
+
+  // Sincronizar ajustes iniciais quando mudarem
+  useEffect(() => {
+    setAdjustments(initialAdjustments);
+  }, [initialAdjustments]);
+
+  // Notificar mudanças nos ajustes
+  useEffect(() => {
+    if (onAdjustmentsChange) {
+      onAdjustmentsChange(adjustments);
+    }
+  }, [adjustments, onAdjustmentsChange]);
   const [loading, setLoading] = useState(true);
   const [selectedNegativo, setSelectedNegativo] = useState<string | null>(null);
   const [selectedPositivo, setSelectedPositivo] = useState<string | null>(null);
@@ -70,6 +84,21 @@ export default function AdjustmentsTable({
       setError(err instanceof Error ? err.message : "Erro desconhecido");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAdjustments = async () => {
+    try {
+      const res = await fetch(
+        `/api/adjustments/list?sped_file_id=${spedFileId}`
+      );
+      const data = await res.json();
+
+      if (res.ok && data.adjustments) {
+        setAdjustments(data.adjustments);
+      }
+    } catch (err) {
+      console.error("Erro ao recarregar ajustes:", err);
     }
   };
 
@@ -123,14 +152,21 @@ export default function AdjustmentsTable({
         throw new Error(data.error || "Erro ao criar ajuste");
       }
 
-      setSuccess("Ajuste criado com sucesso!");
-      setAdjustments([data.adjustment, ...adjustments]);
+      setSuccess(`✅ Ajuste criado e salvo com sucesso! Código ${data.adjustment.cod_positivo} → ${data.adjustment.cod_negativo} - Qtd: ${data.adjustment.qtd_baixada}`);
+      
+      // Atualizar estado local IMEDIATAMENTE com o novo ajuste
+      const newAdjustments = [data.adjustment, ...adjustments];
+      setAdjustments(newAdjustments);
+      
       setSelectedNegativo(null);
       setSelectedPositivo(null);
       setQtdBaixada("");
       
-      // Recarregar dados do inventário
+      // Recarregar dados do inventário para refletir os ajustes
       await loadInventoryData();
+      
+      // Recarregar ajustes do banco para garantir sincronização completa
+      await loadAdjustments();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido");
     } finally {
@@ -344,69 +380,116 @@ export default function AdjustmentsTable({
         </div>
       </div>
 
-      {/* Tabela de ajustes realizados */}
-      {adjustments.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-6 py-4 bg-blue-50 border-b border-blue-200">
-            <h2 className="text-lg font-semibold text-blue-900">
-              Ajustes Realizados ({adjustments.length})
+      {/* Tabela de ajustes realizados - DESTACADA */}
+      {adjustments.length === 0 ? (
+        <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-8 text-center">
+          <div className="text-6xl mb-4">📝</div>
+          <h3 className="text-xl font-semibold text-yellow-900 mb-2">
+            Nenhum ajuste realizado ainda
+          </h3>
+          <p className="text-yellow-700">
+            Os ajustes que você criar aparecerão aqui e serão salvos automaticamente no banco de dados.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white border-2 border-blue-300 rounded-lg overflow-hidden shadow-lg">
+          <div className="px-6 py-4 bg-gradient-to-r from-blue-500 to-blue-600 border-b border-blue-200">
+            <h2 className="text-xl font-bold text-white">
+              📋 Ajustes Realizados e Salvos ({adjustments.length})
             </h2>
+            <p className="text-sm text-blue-100 mt-1">
+              Todos os ajustes estão salvos no banco de dados e persistem mesmo após fechar a aba ou mudar de mês
+            </p>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-blue-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Data
+                  <th className="px-6 py-3 text-left text-xs font-bold text-blue-900 uppercase tracking-wider">
+                    Data/Hora
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Código Negativo
+                  <th className="px-6 py-3 text-left text-xs font-bold text-blue-900 uppercase tracking-wider">
+                    Transferência
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Código Positivo
+                  <th className="px-6 py-3 text-right text-xs font-bold text-blue-900 uppercase tracking-wider">
+                    Quantidade Baixada
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Quantidade
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-bold text-blue-900 uppercase tracking-wider">
                     Custo Unit.
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-bold text-blue-900 uppercase tracking-wider">
                     Valor Total
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {adjustments.map((adj) => (
-                  <tr key={adj.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(adj.created_at).toLocaleString("pt-BR")}
+                {adjustments.map((adj, index) => (
+                  <tr 
+                    key={adj.id}
+                    className={`${index === 0 ? 'bg-green-50 border-l-4 border-green-500' : 'hover:bg-gray-50'} transition-colors`}
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <div className="font-medium">
+                        {new Date(adj.created_at).toLocaleDateString("pt-BR")}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {new Date(adj.created_at).toLocaleTimeString("pt-BR")}
+                      </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {adj.cod_negativo}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <div className="flex flex-col">
+                          <div className="text-xs text-gray-500 mb-1">De (Positivo):</div>
+                          <span className="text-sm font-bold text-green-700 bg-green-100 px-2 py-1 rounded">
+                            {adj.cod_positivo}
+                          </span>
+                        </div>
+                        <div className="text-blue-600 font-bold text-lg">→</div>
+                        <div className="flex flex-col">
+                          <div className="text-xs text-gray-500 mb-1">Para (Negativo):</div>
+                          <span className="text-sm font-bold text-red-700 bg-red-100 px-2 py-1 rounded">
+                            {adj.cod_negativo}
+                          </span>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {adj.cod_positivo}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                      <span className="font-bold text-blue-900 text-lg">
+                        {Number(adj.qtd_baixada).toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                      {Number(adj.qtd_baixada).toFixed(2)}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-700">
+                      R$ {Number(adj.unit_cost).toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </td>
-                    <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">
-                      R$ {Number(adj.unit_cost).toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
-                      R$ {Number(adj.total_value).toFixed(2)}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                      <span className="font-bold text-gray-900 text-lg">
+                        R$ {Number(adj.total_value).toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
                     </td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-50">
+              <tfoot className="bg-blue-50 border-t-2 border-blue-300">
                 <tr>
-                  <td colSpan={5} className="px-6 py-3 text-right text-sm font-medium text-gray-700">
-                    Total:
+                  <td colSpan={3} className="px-6 py-4 text-right text-sm font-bold text-blue-900">
+                    TOTAL GERAL:
                   </td>
-                  <td className="px-6 py-3 text-right text-sm font-bold text-gray-900">
-                    R$ {totalAjustes.toFixed(2)}
+                  <td colSpan={2} className="px-6 py-4 text-right">
+                    <span className="text-xl font-bold text-blue-900">
+                      R$ {totalAjustes.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
                   </td>
                 </tr>
               </tfoot>

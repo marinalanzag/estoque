@@ -15,6 +15,31 @@ interface Pendencia {
   motivo: string;
 }
 
+interface XmlImport {
+  id: string;
+  label: string;
+  sped_file_id: string;
+  total_xmls: number;
+  total_items: number;
+  created_at: string;
+  period_id: string | null;
+  sped_files: {
+    name: string;
+  } | null;
+}
+
+interface GroupedXmlImport {
+  key: string;
+  sped_file_id: string;
+  sped_name: string | null;
+  date: string;
+  imports: XmlImport[];
+  total_xmls: number;
+  total_items: number;
+  all_linked: boolean;
+  import_ids: string[];
+}
+
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const result: T[][] = [];
   for (let i = 0; i < arr.length; i += size) {
@@ -37,6 +62,7 @@ function XmlSalesUploadFormInner({
   const searchParams = useSearchParams();
   const fileIdFromUrl = searchParams.get("fileId");
 
+  const [mode, setMode] = useState<"upload" | "select">("upload");
   const [spedFiles, setSpedFiles] = useState<SpedFile[]>([]);
   const [selectedFileId, setSelectedFileId] = useState<string>(
     fileIdFromUrl || ""
@@ -54,6 +80,11 @@ function XmlSalesUploadFormInner({
     pendencias: Pendencia[];
   } | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
+  const [xmlImports, setXmlImports] = useState<XmlImport[]>([]);
+  const [groupedImports, setGroupedImports] = useState<GroupedXmlImport[]>([]);
+  const [selectedImportId, setSelectedImportId] = useState<string>("");
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string>("");
+  const [loadingImports, setLoadingImports] = useState(false);
 
   useEffect(() => {
     async function fetchSpedFiles() {
@@ -128,6 +159,28 @@ function XmlSalesUploadFormInner({
     fetchSpedFiles();
   }, []);
 
+  useEffect(() => {
+    if (mode === "select") {
+      loadXmlImports();
+    }
+  }, [mode]);
+
+  const loadXmlImports = async () => {
+    setLoadingImports(true);
+    try {
+      const res = await fetch("/api/xml-sales/imports");
+      const data = await res.json();
+      if (data.ok) {
+        setXmlImports(data.imports || []);
+        setGroupedImports(data.grouped || []);
+      }
+    } catch (err) {
+      console.error("Erro ao carregar imports de XMLs:", err);
+    } finally {
+      setLoadingImports(false);
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
     setFiles(selectedFiles);
@@ -136,6 +189,64 @@ function XmlSalesUploadFormInner({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (mode === "select") {
+      // Modo seleção - vincular import(s) existente(s) ao período
+      if (!selectedGroupKey && !selectedImportId) {
+        setStatus("Erro: Selecione um grupo ou import de XMLs para vincular ao período");
+        return;
+      }
+
+      setStatus("Vinculando ao período ativo...");
+      setIsLoading(true);
+
+      try {
+        let importIds: string[] = [];
+        
+        if (selectedGroupKey) {
+          // Vincular todos os imports do grupo
+          const group = groupedImports.find(g => g.key === selectedGroupKey);
+          if (group) {
+            importIds = group.import_ids;
+          }
+        } else if (selectedImportId) {
+          // Vincular apenas o import selecionado
+          importIds = [selectedImportId];
+        }
+
+        if (importIds.length === 0) {
+          setStatus("Erro: Nenhum import selecionado");
+          setIsLoading(false);
+          return;
+        }
+
+        const res = await fetch("/api/xml-sales/link-period", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ importIds }),
+        });
+
+        const json = await res.json();
+        if (json.ok) {
+          const count = json.count || importIds.length;
+          setStatus(`${count} import(s) de XMLs vinculado(s) ao período ativo com sucesso!`);
+          setSelectedImportId("");
+          setSelectedGroupKey("");
+          await loadXmlImports();
+        } else {
+          setStatus(`Erro: ${json.error || "Erro desconhecido"}`);
+        }
+      } catch (error) {
+        console.error("Erro ao vincular import:", error);
+        setStatus(
+          `Erro: ${error instanceof Error ? error.message : "Erro desconhecido"}`
+        );
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Modo upload - importar novos XMLs
     if (!selectedFileId) {
       setStatus("Erro: Selecione um arquivo SPED");
       return;
@@ -369,109 +480,217 @@ function XmlSalesUploadFormInner({
       )}
 
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor={`sped-file-select-${variant}`}
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
-              Arquivo SPED de destino *
-            </label>
-            <select
-              id={`sped-file-select-${variant}`}
-              value={selectedFileId}
-              onChange={(e) => setSelectedFileId(e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              disabled={isLoading || !!loadingError}
-              required
-            >
-              <option value="">Selecione um arquivo SPED...</option>
-              {spedFiles.map((file) => (
-                <option key={file.id} value={file.id}>
-                  {file.name} (
-                  {new Date(file.uploaded_at).toLocaleDateString("pt-BR")})
-                </option>
-              ))}
-            </select>
-            {spedFiles.length === 0 && !loadingError && (
-              <p className="mt-1 text-sm text-gray-500">
-                Nenhum arquivo SPED encontrado. Importe um arquivo SPED primeiro.
-              </p>
-            )}
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-            <label
-              htmlFor={`import-label-${variant}`}
-              className="block text-sm font-medium text-blue-900 mb-2"
-            >
-              Referência da importação (opcional, mas recomendado)
-            </label>
-            <input
-              id={`import-label-${variant}`}
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="Ex: Importação Janeiro 2025, XMLs de Vendas Jan/2025"
-              className="block w-full px-3 py-2 border border-blue-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              disabled={isLoading}
-            />
-            <p className="mt-1 text-xs text-blue-700">
-              💡 Identifique esta importação para facilitar a seleção posterior na página de saídas
-            </p>
-          </div>
-
-          <div>
-            <label
-              htmlFor={`xml-files-input-${variant}`}
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
-              Arquivos XML ou ZIP *
-            </label>
-            <input
-              id={`xml-files-input-${variant}`}
-              data-upload-type={`xml-${variant}`}
-              type="file"
-              accept=".xml,.zip"
-              multiple
-              onChange={handleFileChange}
-              className="block w-full text-sm text-gray-500
-                file:mr-4 file:py-2 file:px-4
-                file:rounded-md file:border-0
-                file:text-sm file:font-semibold
-                file:bg-blue-50 file:text-blue-700
-                hover:file:bg-blue-100
-                border border-gray-300 rounded-md"
-              disabled={isLoading}
-              required
-            />
-            {files.length > 0 && (
-              <p className="mt-2 text-sm text-gray-600">
-                {files.length} arquivo(s) selecionado(s)
-                {files.length > 300 && (
-                  <span className="text-blue-600 font-medium">
-                    {" "}
-                    • Serão enviados em {Math.ceil(files.length / 300)} lote(s)
-                    de até 300 arquivos cada
-                  </span>
-                )}
-                <span className="block mt-1 text-xs text-gray-500">
-                  ⚡ Processamento otimizado: cada lote processa até 300 arquivos
-                  para máxima velocidade
-                </span>
-              </p>
-            )}
-          </div>
-
+        {/* Abas */}
+        <div className="flex border-b border-gray-200 mb-6">
           <button
-            type="submit"
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-            disabled={!selectedFileId || files.length === 0 || isLoading}
+            type="button"
+            onClick={() => setMode("upload")}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${
+              mode === "upload"
+                ? "border-b-2 border-blue-600 text-blue-600"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
           >
-            {isLoading
-              ? `Importando lote ${currentBatch}/${totalBatches}...`
-              : "Importar XMLs de Venda"}
+            📤 Importar Novo Arquivo
           </button>
+          <button
+            type="button"
+            onClick={() => setMode("select")}
+            className={`px-4 py-2 font-medium text-sm transition-colors ${
+              mode === "select"
+                ? "border-b-2 border-blue-600 text-blue-600"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            📋 Usar Import Existente
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === "upload" ? (
+            <>
+              <div>
+                <label
+                  htmlFor={`sped-file-select-${variant}`}
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  Arquivo SPED de destino *
+                </label>
+                <select
+                  id={`sped-file-select-${variant}`}
+                  value={selectedFileId}
+                  onChange={(e) => setSelectedFileId(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  disabled={isLoading || !!loadingError}
+                  required
+                >
+                  <option value="">Selecione um arquivo SPED...</option>
+                  {spedFiles.map((file) => (
+                    <option key={file.id} value={file.id}>
+                      {file.name} (
+                      {new Date(file.uploaded_at).toLocaleDateString("pt-BR")})
+                    </option>
+                  ))}
+                </select>
+                {spedFiles.length === 0 && !loadingError && (
+                  <p className="mt-1 text-sm text-gray-500">
+                    Nenhum arquivo SPED encontrado. Importe um arquivo SPED primeiro.
+                  </p>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label
+                  htmlFor={`select-xml-import-group-${variant}`}
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  Selecione um grupo de imports de XMLs (agrupados por SPED e data)
+                </label>
+                {loadingImports ? (
+                  <p className="text-sm text-gray-500">Carregando imports...</p>
+                ) : groupedImports.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    Nenhum import de XMLs encontrado. Use a aba "Importar Novo Arquivo" para criar um.
+                  </p>
+                ) : (
+                  <select
+                    id={`select-xml-import-group-${variant}`}
+                    value={selectedGroupKey}
+                    onChange={(e) => {
+                      setSelectedGroupKey(e.target.value);
+                      setSelectedImportId(""); // Limpar seleção individual
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    disabled={isLoading}
+                  >
+                    <option value="">Selecione um grupo de imports...</option>
+                    {groupedImports.map((group) => {
+                      const dateStr = new Date(group.date).toLocaleDateString("pt-BR");
+                      const importCount = group.imports.length;
+                      return (
+                        <option key={group.key} value={group.key}>
+                          {group.sped_name || "SPED desconhecido"} - {dateStr} - {group.total_xmls} XMLs, {group.total_items} itens
+                          {importCount > 1 && ` (${importCount} imports)`}
+                          {group.all_linked && " (todos vinculados)"}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
+                {selectedGroupKey && (
+                  <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                    <p className="text-xs text-gray-600 mb-2">
+                      <strong>Detalhes do grupo selecionado:</strong>
+                    </p>
+                    {(() => {
+                      const group = groupedImports.find(g => g.key === selectedGroupKey);
+                      if (!group) return null;
+                      return (
+                        <div className="space-y-1 text-xs text-gray-600">
+                          <p>• <strong>{group.imports.length}</strong> import(s) neste grupo</p>
+                          <p>• Total: <strong>{group.total_xmls}</strong> XMLs, <strong>{group.total_items}</strong> itens</p>
+                          <p>• SPED: <strong>{group.sped_name || "N/A"}</strong></p>
+                          <p>• Data: <strong>{new Date(group.date).toLocaleDateString("pt-BR")}</strong></p>
+                          {group.all_linked && (
+                            <p className="text-green-600">✓ Todos os imports deste grupo já estão vinculados ao período</p>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {mode === "upload" && (
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                <label
+                  htmlFor={`import-label-${variant}`}
+                  className="block text-sm font-medium text-blue-900 mb-2"
+                >
+                  Referência da importação (opcional, mas recomendado)
+                </label>
+                <input
+                  id={`import-label-${variant}`}
+                  type="text"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder="Ex: Importação Janeiro 2025, XMLs de Vendas Jan/2025"
+                  className="block w-full px-3 py-2 border border-blue-300 rounded-md shadow-sm bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  disabled={isLoading}
+                />
+                <p className="mt-1 text-xs text-blue-700">
+                  💡 Identifique esta importação para facilitar a seleção posterior na página de saídas
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor={`xml-files-input-${variant}`}
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  Arquivos XML ou ZIP *
+                </label>
+                <input
+                  id={`xml-files-input-${variant}`}
+                  data-upload-type={`xml-${variant}`}
+                  type="file"
+                  accept=".xml,.zip"
+                  multiple
+                  onChange={handleFileChange}
+                  className="block w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-md file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-blue-50 file:text-blue-700
+                    hover:file:bg-blue-100
+                    border border-gray-300 rounded-md"
+                  disabled={isLoading}
+                  required
+                />
+                {files.length > 0 && (
+                  <p className="mt-2 text-sm text-gray-600">
+                    {files.length} arquivo(s) selecionado(s)
+                    {files.length > 300 && (
+                      <span className="text-blue-600 font-medium">
+                        {" "}
+                        • Serão enviados em {Math.ceil(files.length / 300)} lote(s)
+                        de até 300 arquivos cada
+                      </span>
+                    )}
+                    <span className="block mt-1 text-xs text-gray-500">
+                      ⚡ Processamento otimizado: cada lote processa até 300 arquivos
+                      para máxima velocidade
+                    </span>
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                disabled={!selectedFileId || files.length === 0 || isLoading}
+              >
+                {isLoading
+                  ? `Importando lote ${currentBatch}/${totalBatches}...`
+                  : "Importar XMLs de Venda"}
+              </button>
+            </>
+          )}
+
+          {mode === "select" && (
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              disabled={(!selectedGroupKey && !selectedImportId) || isLoading || loadingImports}
+            >
+              {isLoading ? "Vinculando..." : selectedGroupKey ? "Vincular Todos os Imports do Grupo" : "Vincular ao Período Ativo"}
+            </button>
+          )}
         </form>
       </div>
 
