@@ -110,9 +110,7 @@ async function fetchEntryAggregates(
     const qtyUsada =
       entry.adjusted_qty ??
       (entry as any).adjustedQty ??
-      entry.qtd_ajustada ??
       entry.qtd_produto ??
-      entry.qtd_nf ??
       entry.quantidade_nf ??
       0;
     
