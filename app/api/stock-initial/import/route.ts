@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 import { parseNumberBR, mapHeaderToField, normalizeCodItem } from "@/lib/utils";
-import XLSX from "xlsx";
+import * as XLSX from "xlsx";
 import Papa from "papaparse";
 
 interface StockInitialRecord {

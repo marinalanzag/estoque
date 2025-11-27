@@ -552,7 +552,7 @@ function XmlSalesUploadFormInner({
                   <p className="text-sm text-gray-500">Carregando imports...</p>
                 ) : groupedImports.length === 0 ? (
                   <p className="text-sm text-gray-500">
-                    Nenhum import de XMLs encontrado. Use a aba "Importar Novo Arquivo" para criar um.
+                    Nenhum import de XMLs encontrado. Use a aba &quot;Importar Novo Arquivo&quot; para criar um.
                   </p>
                 ) : (
                   <select

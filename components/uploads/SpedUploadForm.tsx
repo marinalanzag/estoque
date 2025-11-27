@@ -234,7 +234,7 @@ export default function SpedUploadForm({
                   <p className="text-sm text-gray-500">Carregando arquivos...</p>
                 ) : spedFiles.length === 0 ? (
                   <p className="text-sm text-gray-500">
-                    Nenhum arquivo SPED encontrado. Use a aba "Importar Novo Arquivo" para criar um.
+                    Nenhum arquivo SPED encontrado. Use a aba &quot;Importar Novo Arquivo&quot; para criar um.
                   </p>
                 ) : (
                   <select

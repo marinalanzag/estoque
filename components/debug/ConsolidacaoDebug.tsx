@@ -57,7 +57,7 @@ export default function ConsolidacaoDebug() {
         </li>
       </ol>
       <div className="mt-4 p-2 bg-yellow-100 rounded text-xs">
-        <strong>Dica:</strong> Use <code className="bg-yellow-200 px-1 rounded">Ctrl+F</code> no terminal para buscar por "DIFERENÇA" ou "TOP 20"
+        <strong>Dica:</strong> Use <code className="bg-yellow-200 px-1 rounded">Ctrl+F</code> no terminal para buscar por &quot;DIFERENÇA&quot; ou &quot;TOP 20&quot;
       </div>
     </div>
   );

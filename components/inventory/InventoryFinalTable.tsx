@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface InventoryItem {
   cod_item: string;
@@ -36,11 +36,7 @@ export default function InventoryFinalTable({
   const [removeNegatives, setRemoveNegatives] = useState(false);
   const [searchTerm, setSearchTerm] = useState<string>("");
 
-  useEffect(() => {
-    loadData();
-  }, [spedFileId]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -60,7 +56,11 @@ export default function InventoryFinalTable({
     } finally {
       setLoading(false);
     }
-  };
+  }, [spedFileId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleDownload = async () => {
     try {

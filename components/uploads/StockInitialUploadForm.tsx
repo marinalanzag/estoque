@@ -253,7 +253,7 @@ export default function StockInitialUploadForm({
                   <p className="text-sm text-gray-500">Carregando imports...</p>
                 ) : imports.length === 0 ? (
                   <p className="text-sm text-gray-500">
-                    Nenhum import encontrado. Use a aba "Importar Novo Arquivo" para criar um.
+                    Nenhum import encontrado. Use a aba &quot;Importar Novo Arquivo&quot; para criar um.
                   </p>
                 ) : (
                   <select

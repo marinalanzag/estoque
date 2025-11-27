@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface InventoryItem {
   cod_item: string;
@@ -62,11 +62,7 @@ export default function AdjustmentsTable({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadInventoryData();
-  }, [spedFileId]);
-
-  const loadInventoryData = async () => {
+  const loadInventoryData = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(
@@ -85,7 +81,11 @@ export default function AdjustmentsTable({
     } finally {
       setLoading(false);
     }
-  };
+  }, [spedFileId]);
+
+  useEffect(() => {
+    loadInventoryData();
+  }, [loadInventoryData]);
 
   const loadAdjustments = async () => {
     try {
