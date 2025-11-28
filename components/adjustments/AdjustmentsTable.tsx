@@ -78,7 +78,8 @@ export default function AdjustmentsTable({
     
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [spedFileId, onRefresh]); // Incluir onRefresh nas dependências
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spedFileId, onRefresh]); // loadAdjustments e loadInventoryData são funções estáveis
 
   // Notificar mudanças nos ajustes
   useEffect(() => {
@@ -433,7 +434,8 @@ export default function AdjustmentsTable({
         }
       }
     }
-  }, [selectedNegativo, selectedNegativoItem]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNegativo, selectedNegativoItem]); // searchPositivos intencionalmente omitido para evitar loop
 
   if (loading) {
     return (
@@ -537,7 +539,7 @@ export default function AdjustmentsTable({
             )}
             {searchPositivos && filteredPositivos.length === 0 && (
               <p className="mt-1 text-xs text-red-600">
-                Nenhum item encontrado com a busca "{searchPositivos}"
+                Nenhum item encontrado com a busca &quot;{searchPositivos}&quot;
               </p>
             )}
           </div>
