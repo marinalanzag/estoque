@@ -6,8 +6,8 @@ const nextConfig = {
       bodySizeLimit: '1gb', // Limite de 1GB para uploads
     },
   },
-  // Configurações para Vercel
-  output: 'standalone', // Otimiza para produção no Vercel
+  // Removido output: 'standalone' para compatibilidade com diferentes plataformas
+  // O Vercel funciona melhor sem isso, e outras plataformas também
 };
 
 module.exports = nextConfig;
