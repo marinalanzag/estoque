@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
-import { fetchProductDescriptions } from "@/lib/utils";
+import { fetchProductDescriptions, normalizeCodItem } from "@/lib/utils";
 
 const PAGE_SIZE = 1000;
 
@@ -25,6 +25,7 @@ async function fetchDocuments(
   supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
   spedFileId: string
 ) {
+  console.log("[fetchDocuments] Buscando documentos APENAS do SPED:", spedFileId);
   const results: any[] = [];
   let from = 0;
 
@@ -52,7 +53,7 @@ async function fetchDocuments(
           )
         `
       )
-      .eq("sped_file_id", spedFileId)
+      .eq("sped_file_id", spedFileId) // CRÍTICO: Filtrar APENAS pelo SPED especificado
       .eq("ind_oper", "0")
       .order("dt_doc", { ascending: false })
       .range(from, to);
@@ -174,31 +175,156 @@ export interface EntradaItem {
   custo_unitario: number;
   custo_total: number;
   adjusted_qty: number | null;
+  sped_file_id: string; // ID do SPED ao qual o item pertence
 }
 
 /**
  * Constrói o array de entries exatamente como a página Entradas faz.
  * Esta é a fonte da verdade para quais itens aparecem na aba Entradas.
+ * 
+ * IMPORTANTE: Quando houver período ativo com SPED base, usa SOMENTE o SPED base.
+ * Não busca documentos de outros SPEDs do período para evitar duplicação.
  */
 export async function buildEntradasItems(
   supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
   spedFileId: string,
-  origem: "ENTRADAS" | "CONSOLIDACAO" = "ENTRADAS"
+  origem: "ENTRADAS" | "CONSOLIDACAO" = "ENTRADAS",
+  activePeriodId?: string | null
 ): Promise<EntradaItem[]> {
-  console.log("🚀 buildEntradasItems chamado", {
+  console.log("[DEBUG ENTRADAS] buildEntradasItems chamado", {
     spedFileId,
     origem,
+    activePeriodId,
   });
-  // 1. Buscar período ativo (para incluir itens com ajustes de outros SPEDs do período)
-  const { data: activePeriod } = await supabaseAdmin
-    .from("periods")
-    .select("id")
-    .eq("is_active", true)
-    .single();
   
-  // 2. Buscar documentos (mesma lógica da página Entradas)
+  // 1. Buscar período ativo e verificar se há SPED base
+  // Se activePeriodId foi passado, usar ele; senão, buscar período ativo
+  let activePeriod: { id: string } | null = null;
+  
+  if (activePeriodId) {
+    // Usar o período passado como parâmetro
+    activePeriod = { id: activePeriodId };
+    console.log("[DEBUG ENTRADAS] Usando período passado como parâmetro:", activePeriodId);
+  } else {
+    // Buscar período ativo do banco
+    const { data: periodData } = await supabaseAdmin
+      .from("periods")
+      .select("id")
+      .eq("is_active", true)
+      .single();
+    activePeriod = periodData || null;
+    console.log("[DEBUG ENTRADAS] Período ativo buscado do banco:", activePeriod?.id || "não encontrado");
+  }
+  
+  let spedBaseId: string | null = null;
+  if (activePeriod) {
+    const { getBaseSpedFileForPeriod } = await import("@/lib/periods");
+    spedBaseId = await getBaseSpedFileForPeriod(activePeriod.id);
+    console.log("[DEBUG ENTRADAS] periodId:", activePeriod.id);
+    console.log("[DEBUG ENTRADAS] spedBaseId:", spedBaseId);
+    
+    // Se há SPED base e o spedFileId passado não é o base, usar o base
+    if (spedBaseId && spedFileId !== spedBaseId) {
+      console.log("[DEBUG ENTRADAS] ⚠️ spedFileId passado não é o base, usando base:", spedBaseId);
+      spedFileId = spedBaseId;
+    }
+  }
+  
+  // 2. Buscar documentos SOMENTE do SPED selecionado (que deve ser o base se houver período)
+  // CRÍTICO: Verificar se o spedFileId realmente é o base antes de buscar documentos
+  if (activePeriod && spedBaseId) {
+    if (spedFileId !== spedBaseId) {
+      console.error("[DEBUG ENTRADAS] ⚠️ ERRO CRÍTICO: spedFileId não é o base! Corrigindo:", {
+        spedFileIdPassado: spedFileId,
+        spedBaseIdCorreto: spedBaseId
+      });
+      spedFileId = spedBaseId;
+    }
+  }
+  
+  // VALIDAÇÃO FINAL: Garantir que estamos buscando apenas do SPED correto
+  console.log("[DEBUG ENTRADAS] Buscando documentos do SPED:", spedFileId);
+  console.log("[DEBUG ENTRADAS] activePeriod:", activePeriod?.id);
+  console.log("[DEBUG ENTRADAS] spedBaseId:", spedBaseId);
+  
+  if (activePeriod && spedBaseId) {
+    if (spedFileId !== spedBaseId) {
+      console.error(`[DEBUG ENTRADAS] ⚠️ ERRO CRÍTICO: spedFileId (${spedFileId}) não é o base (${spedBaseId}). Corrigindo...`);
+      spedFileId = spedBaseId;
+    }
+  } else if (activePeriod && !spedBaseId) {
+    console.warn(`[DEBUG ENTRADAS] ⚠️ AVISO: Há período ativo mas não há SPED base definido. Usando spedFileId passado: ${spedFileId}`);
+  }
+  
   const documents = await fetchDocuments(supabaseAdmin, spedFileId);
-  const documentIds = documents.map((doc) => doc.id).filter(Boolean);
+  
+  console.log("[DEBUG ENTRADAS] totalDocumentsEntrada encontrados:", documents.length);
+  console.log("[DEBUG ENTRADAS] spedFileId usado na busca:", spedFileId);
+  console.log("[DEBUG ENTRADAS] origem:", origem);
+  
+  // DEBUG: Verificar se há documentos que podem conter o item 002064
+  // Buscar diretamente no banco por document_items com código 002064 do SPED
+  const { data: items2064Banco, error: items2064Error } = await supabaseAdmin
+    .from("document_items")
+    .select(`
+      id,
+      cod_item,
+      document_id,
+      qtd,
+      documents!inner(sped_file_id, ind_oper, serie, num_doc)
+    `)
+    .eq("documents.sped_file_id", spedFileId)
+    .or("cod_item.eq.002064,cod_item.eq.2064")
+    .limit(10);
+  
+  if (items2064Error) {
+    console.error(`[DEBUG ENTRADAS] Erro ao buscar items 2064 do banco:`, items2064Error);
+  } else {
+    console.log(`[DEBUG ENTRADAS] Items 2064 encontrados DIRETAMENTE no banco para SPED ${spedFileId}:`, items2064Banco?.length || 0);
+    if (items2064Banco && items2064Banco.length > 0) {
+      items2064Banco.forEach((item: any, idx: number) => {
+        const doc = item.documents;
+        console.log(`[DEBUG ENTRADAS] Item 2064 do banco [${idx + 1}]:`, {
+          id: item.id,
+          cod_item: item.cod_item,
+          document_id: item.document_id,
+          qtd: item.qtd,
+          documento: {
+            sped_file_id: doc?.sped_file_id,
+            ind_oper: doc?.ind_oper,
+            serie: doc?.serie,
+            num_doc: doc?.num_doc,
+          },
+        });
+      });
+    }
+  }
+  
+  // VALIDAÇÃO CRÍTICA: Verificar se TODOS os documentos pertencem ao SPED correto
+  // (fetchDocuments já filtra, mas vamos validar para garantir)
+  let documentsFiltrados = documents;
+  const documentosOutrosSpeds = documents.filter(doc => doc.sped_file_id !== spedFileId);
+  if (documentosOutrosSpeds.length > 0) {
+    console.error("[DEBUG ENTRADAS] ⚠️ ERRO CRÍTICO: Encontrados documentos de outros SPEDs:", documentosOutrosSpeds.length);
+    console.error("[DEBUG ENTRADAS] SPEDs incorretos encontrados:", Array.from(new Set(documentosOutrosSpeds.map(d => d.sped_file_id))));
+    console.error("[DEBUG ENTRADAS] IDs dos documentos incorretos:", documentosOutrosSpeds.map(d => d.id));
+    // Filtrar apenas documentos do SPED correto
+    documentsFiltrados = documents.filter(doc => doc.sped_file_id === spedFileId);
+    console.error("[DEBUG ENTRADAS] Filtrando documentos incorretos. Mantendo apenas:", documentsFiltrados.length);
+  } else {
+    console.log("[DEBUG ENTRADAS] ✅ Todos os documentos pertencem ao SPED correto");
+  }
+  
+  // VALIDAÇÃO: Verificar se não há documentos duplicados
+  const documentIdsUnicos = new Set(documentsFiltrados.map(d => d.id));
+  if (documentIdsUnicos.size !== documentsFiltrados.length) {
+    console.error("[DEBUG ENTRADAS] ⚠️ ERRO: Documentos duplicados encontrados!");
+    console.error("[DEBUG ENTRADAS] Total documentos:", documentsFiltrados.length, "IDs únicos:", documentIdsUnicos.size);
+  }
+  
+  // Usar apenas os documentos filtrados
+  const documentIds = documentsFiltrados.map((doc) => doc.id).filter(Boolean);
+  console.log("[DEBUG ENTRADAS] Total de documentIds únicos para buscar itens:", documentIds.length);
   
   // Constantes para debug
   const PROBLEMATIC_DOC_ID = '01839c8c-f655-4481-9863-c2688b4e95ba';
@@ -210,112 +336,167 @@ export async function buildEntradasItems(
     adjustments,
   } = await fetchDocumentItems(supabaseAdmin, documentIds);
   
-  // 4. INCLUIR ITENS COM AJUSTES DE OUTROS SPEDs DO PERÍODO ATIVO
-  // Buscar todos os ajustes no banco
-  const { data: todosAjustes, error: ajustesError } = await supabaseAdmin
-    .from("document_item_adjustments")
-    .select("document_item_id, adjusted_qty")
-    .limit(500);
+  console.log("[DEBUG ENTRADAS] totalDocumentItemsEntrada:", documentItems.length);
   
-  if (!ajustesError && todosAjustes && todosAjustes.length > 0 && activePeriod) {
-    const idsComAjuste = todosAjustes.map(a => a.document_item_id).filter(Boolean);
-    
-    // Buscar os document_items correspondentes
-    const chunkSize = 100;
-    const itensComAjuste: any[] = [];
-    for (let i = 0; i < idsComAjuste.length; i += chunkSize) {
-      const chunk = idsComAjuste.slice(i, i + chunkSize);
-      const { data: itens, error: itensError } = await supabaseAdmin
-        .from("document_items")
-        .select("id, document_id, cod_item")
-        .in("id", chunk);
+  // VALIDAÇÃO CRÍTICA: Verificar se todos os documentItems pertencem a documentos do SPED correto
+  // Buscar os document_ids dos itens e verificar se todos pertencem ao SPED base
+  if (documentItems.length > 0) {
+    const documentIdsDosItens = Array.from(new Set(documentItems.map(item => item.document_id).filter(Boolean)));
+    if (documentIdsDosItens.length > 0) {
+      const { data: documentosDosItens } = await supabaseAdmin
+        .from("documents")
+        .select("id, sped_file_id")
+        .in("id", documentIdsDosItens);
       
-      if (!itensError && itens) {
-        itensComAjuste.push(...itens);
+      const documentosOutrosSpeds = documentosDosItens?.filter(doc => doc.sped_file_id !== spedFileId) || [];
+      if (documentosOutrosSpeds.length > 0) {
+        console.error("[DEBUG ENTRADAS] ⚠️ ERRO CRÍTICO: Encontrados document_items de documentos de outros SPEDs:", documentosOutrosSpeds.length);
+        console.error("[DEBUG ENTRADAS] SPEDs incorretos encontrados:", Array.from(new Set(documentosOutrosSpeds.map(d => d.sped_file_id))));
       }
     }
-    
-    // Buscar os documentos desses itens
-    const docIdsComAjuste = Array.from(new Set(itensComAjuste.map(i => i.document_id).filter(Boolean)));
-    if (docIdsComAjuste.length > 0) {
-      const { data: docsComAjuste, error: docsError } = await supabaseAdmin
-        .from("documents")
-        .select("id, sped_file_id, ind_oper")
-        .in("id", docIdsComAjuste)
-        .eq("ind_oper", "0");
-      
-      if (!docsError && docsComAjuste) {
-        // Buscar SPEDs do período ativo
-        const { data: spedFilesPeriodo, error: spedError } = await supabaseAdmin
-          .from("sped_files")
-          .select("id")
-          .eq("period_id", activePeriod.id);
-        
-        if (!spedError && spedFilesPeriodo) {
-          const spedIdsPeriodo = new Set(spedFilesPeriodo.map(sf => sf.id));
-          
-          // Filtrar documentos que pertencem a SPEDs do período ativo
-          const docsPeriodoAtivo = docsComAjuste.filter(doc => 
-            doc.sped_file_id && spedIdsPeriodo.has(doc.sped_file_id)
-          );
-          
-          // Adicionar documentos que não estão na lista inicial
-          const novosDocIds = docsPeriodoAtivo
-            .map(doc => doc.id)
-            .filter(id => !documentIds.includes(id));
-          
-          if (novosDocIds.length > 0) {
-            // Buscar informações completas dos novos documentos
-            const { data: novosDocs, error: novosDocsError } = await supabaseAdmin
-              .from("documents")
-              .select(`
-                id,
-                serie,
-                num_doc,
-                dt_doc,
-                vl_doc,
-                cod_part,
-                sped_file_id,
-                ind_oper,
-                cod_mod,
-                cod_sit,
-                partner:partners (
-                  id,
-                  name,
-                  cnpj,
-                  cpf
-                )
-              `)
-              .in("id", novosDocIds);
-            
-            if (!novosDocsError && novosDocs) {
-              documents.push(...novosDocs);
-              documentIds.push(...novosDocIds);
-              
-              // Buscar itens dos novos documentos
-              const { data: novosItens, error: novosItensError } = await supabaseAdmin
-                .from("document_items")
-                .select("id, document_id, cod_item, num_item, descr_compl, qtd, unid, vl_item, cfop")
-                .in("document_id", novosDocIds);
-              
-              if (!novosItensError && novosItens) {
-                documentItems.push(...novosItens);
-                
-                // Adicionar ajustes para os novos itens
-                const novosItemIds = novosItens.map(i => i.id).filter(Boolean);
-                for (const ajuste of todosAjustes) {
-                  if (ajuste.document_item_id && novosItemIds.includes(ajuste.document_item_id)) {
-                    if (ajuste.adjusted_qty !== null && ajuste.adjusted_qty !== undefined) {
-                      adjustments.set(ajuste.document_item_id, Number(ajuste.adjusted_qty));
-                    }
-                  }
-                }
-              }
-            }
+  }
+  
+  // 4. BLINDAGEM OPCIONAL — garantir ajustes SOMENTE do SPED atual
+  // Este bloco garante que todos os ajustes dos document_items do SPED sejam carregados,
+  // mesmo que algum tenha sido perdido na busca inicial
+  try {
+    const { data: itensDoSped, error: itensErr } = await supabaseAdmin
+      .from("document_items")
+      .select("id")
+      .in("document_id", documentIds);
+
+    if (!itensErr && itensDoSped?.length) {
+      const idsItensSped = itensDoSped.map(i => i.id).filter(Boolean);
+
+      const { data: ajustesSped, error: ajustesErr } = await supabaseAdmin
+        .from("document_item_adjustments")
+        .select("document_item_id, adjusted_qty")
+        .in("document_item_id", idsItensSped);
+
+      if (!ajustesErr && ajustesSped) {
+        for (const adj of ajustesSped) {
+          if (adj.document_item_id && adj.adjusted_qty !== null && adj.adjusted_qty !== undefined) {
+            adjustments.set(adj.document_item_id, Number(adj.adjusted_qty));
           }
         }
       }
     }
+  } catch (err) {
+    console.warn("[buildEntradasItems] blindagem opcional falhou:", err);
+  }
+  
+  // 4.5. BUSCA CRÍTICA: Buscar itens com ajustes que podem não estar nos documentos encontrados
+  // Isso garante que itens ajustados sejam incluídos mesmo que seus documentos não apareçam na busca inicial
+  // (pode acontecer se o documento está em outro SPED do período ou se há algum problema de filtro)
+  console.log(`[buildEntradasItems ${origem}] Iniciando busca crítica de ajustes para SPED: ${spedFileId}`);
+  try {
+    // Buscar TODOS os ajustes que pertencem a document_items cujos documentos estão no SPED
+    // IMPORTANTE: Usar uma query mais simples que funcione melhor com o Supabase
+    const { data: todosAjustes, error: todosAjustesErr } = await supabaseAdmin
+      .from("document_item_adjustments")
+      .select("document_item_id, adjusted_qty")
+      .limit(10000); // Limite alto para pegar todos
+    
+    if (todosAjustesErr) {
+      console.error(`[buildEntradasItems ${origem}] Erro ao buscar todos os ajustes:`, todosAjustesErr);
+    } else {
+      console.log(`[buildEntradasItems ${origem}] Total de ajustes encontrados no banco: ${todosAjustes?.length || 0}`);
+      
+      // Agora buscar os document_items correspondentes e filtrar pelo SPED
+      if (todosAjustes && todosAjustes.length > 0) {
+        const itemIdsComAjuste = todosAjustes.map(a => a.document_item_id).filter(Boolean);
+        console.log(`[buildEntradasItems ${origem}] Buscando document_items para ${itemIdsComAjuste.length} ajustes`);
+        
+        // Buscar em chunks
+        const chunkSize = 500;
+        const ajustesComItens: any[] = [];
+        
+        for (let i = 0; i < itemIdsComAjuste.length; i += chunkSize) {
+          const chunk = itemIdsComAjuste.slice(i, i + chunkSize);
+          const { data: itens, error: itensErr } = await supabaseAdmin
+            .from("document_items")
+            .select(`
+              id,
+              cod_item,
+              document_id,
+              documents!inner(
+                id,
+                sped_file_id,
+                ind_oper
+              )
+            `)
+            .in("id", chunk)
+            .eq("documents.sped_file_id", spedFileId)
+            .eq("documents.ind_oper", "0");
+          
+          if (itensErr) {
+            console.error(`[buildEntradasItems ${origem}] Erro ao buscar itens do chunk:`, itensErr);
+            continue;
+          }
+          
+          if (itens && itens.length > 0) {
+            // Combinar ajustes com itens
+            for (const item of itens) {
+              const ajuste = todosAjustes.find(a => a.document_item_id === item.id);
+              if (ajuste) {
+                ajustesComItens.push({
+                  document_item_id: item.id,
+                  adjusted_qty: ajuste.adjusted_qty,
+                  document_items: item,
+                });
+              }
+            }
+          }
+        }
+        
+        console.log(`[buildEntradasItems ${origem}] Ajustes encontrados via busca direta (filtrados por SPED): ${ajustesComItens.length}`);
+        
+        // Adicionar os ajustes encontrados ao Map
+        for (const adj of ajustesComItens) {
+          if (adj.document_item_id && adj.adjusted_qty !== null && adj.adjusted_qty !== undefined) {
+            const itemId = adj.document_item_id;
+            const codItem = (adj.document_items as any)?.cod_item;
+            
+            // DEBUG específico para 002064
+            if (codItem === "002064" || codItem === "2064" || String(codItem).includes("2064")) {
+              console.log(`[buildEntradasItems ${origem}] ✅ Ajuste 002064 encontrado via busca direta:`, {
+                document_item_id: itemId,
+                cod_item: codItem,
+                adjusted_qty: adj.adjusted_qty,
+                document_id: (adj.document_items as any)?.document_id,
+                sped_file_id: ((adj.document_items as any)?.documents as any)?.sped_file_id,
+              });
+            }
+            
+            adjustments.set(itemId, Number(adj.adjusted_qty));
+            
+            // Se o item não está em documentItems, adicionar ele
+            const itemJaExiste = documentItems.find(i => i.id === itemId);
+            if (!itemJaExiste && adj.document_items) {
+              const itemData = adj.document_items as any;
+              console.log(`[buildEntradasItems ${origem}] ⚠️ Item com ajuste não encontrado em documentItems, adicionando:`, {
+                id: itemId,
+                cod_item: itemData.cod_item,
+                document_id: itemData.document_id,
+              });
+              documentItems.push({
+                id: itemId,
+                cod_item: itemData.cod_item,
+                document_id: itemData.document_id,
+                qtd: 0, // Será substituído pelo adjusted_qty
+                vl_item: 0,
+                unid: null,
+                descr_compl: null,
+              });
+            }
+          }
+        }
+      } else {
+        console.log(`[buildEntradasItems ${origem}] Nenhum ajuste encontrado no banco`);
+      }
+    }
+  } catch (err) {
+    console.error("[buildEntradasItems] busca crítica de ajustes falhou:", err);
   }
   
   // DEBUG: Verificar ajustes encontrados
@@ -370,7 +551,19 @@ export async function buildEntradasItems(
     }
   }
 
-  // 5. Buscar produtos e conversões (mesma lógica da página Entradas)
+  // 5. Buscar produtos e conversões
+  // IMPORTANTE: Quando há SPED base, usar SOMENTE o SPED base para conversões.
+  // Não buscar conversões de outros SPEDs do período para evitar confusão.
+  // Se não houver SPED base, usar o SPED selecionado.
+  const spedIdsParaConversao = [spedFileId];
+  
+  if (spedBaseId && spedBaseId !== spedFileId) {
+    console.log(`[buildEntradasItems] ⚠️ Aviso: spedBaseId diferente do spedFileId passado. Usando base.`);
+  }
+  
+  console.log(`[buildEntradasItems] Buscando conversões do SPED: ${spedFileId} (base: ${spedBaseId || 'não há'})`);
+
+  // Buscar produtos do SPED selecionado (que deve ser o base se houver período)
   const products = await fetchAllRows(async (from, to) => {
     const { data, error } = await supabaseAdmin
       .from("products")
@@ -384,18 +577,26 @@ export async function buildEntradasItems(
     return data ?? [];
   });
 
-  const conversions = await fetchAllRows(async (from, to) => {
-    const { data, error } = await supabaseAdmin
-      .from("product_conversions")
-      .select("cod_item, unid_conv, fat_conv")
-      .eq("sped_file_id", spedFileId)
-      .order("cod_item")
-      .range(from, to);
-    if (error) {
-      throw new Error(`Erro ao buscar conversões: ${error.message}`);
-    }
-    return data ?? [];
-  });
+  // Buscar conversões SOMENTE do SPED selecionado (que deve ser o base se houver período)
+  const conversions: any[] = [];
+  for (const spedId of spedIdsParaConversao) {
+    const conversoesDoSped = await fetchAllRows(async (from, to) => {
+      const { data, error } = await supabaseAdmin
+        .from("product_conversions")
+        .select("cod_item, unid_conv, fat_conv")
+        .eq("sped_file_id", spedId)
+        .order("cod_item")
+        .range(from, to);
+      if (error) {
+        console.warn(`Erro ao buscar conversões do SPED ${spedId}: ${error.message}`);
+        return [];
+      }
+      return data ?? [];
+    });
+    conversions.push(...conversoesDoSped);
+  }
+  
+  console.log(`[buildEntradasItems] Total de conversões encontradas: ${conversions.length} (do SPED ${spedFileId})`);
 
   // Criar mapa de produtos do SPED (PRIORIDADE 1)
   const productMap = new Map<
@@ -426,19 +627,27 @@ export async function buildEntradasItems(
   const conversionMapByItem = new Map<string, Array<{ unid_conv: string; fat_conv: number }>>();
   (conversions ?? []).forEach((conv) => {
     if (conv.cod_item && conv.unid_conv) {
-      if (!conversionMapByItem.has(conv.cod_item)) {
-        conversionMapByItem.set(conv.cod_item, []);
+      // Normalizar cod_item para garantir match (6 dígitos com zeros à esquerda)
+      const codItemNormalizado = normalizeCodItem(conv.cod_item);
+      if (!conversionMapByItem.has(codItemNormalizado)) {
+        conversionMapByItem.set(codItemNormalizado, []);
       }
-      conversionMapByItem.get(conv.cod_item)!.push({
+      conversionMapByItem.get(codItemNormalizado)!.push({
         unid_conv: conv.unid_conv.trim(),
         fat_conv: conv.fat_conv ?? 1,
       });
     }
   });
+  
+  console.log(`[buildEntradasItems] Mapa de conversões criado com ${conversionMapByItem.size} cod_items únicos`);
+  if (conversionMapByItem.size > 0 && origem === "ENTRADAS") {
+    const primeirosCodItems = Array.from(conversionMapByItem.keys()).slice(0, 5);
+    console.log(`[buildEntradasItems] Primeiros cod_items com conversão:`, primeirosCodItems);
+  }
 
   // 6. Criar documentMap (mesma lógica da página Entradas)
   const documentMap = new Map<string, any>();
-  documents.forEach((doc) => {
+  documentsFiltrados.forEach((doc) => {
     documentMap.set(doc.id, doc);
   });
   
@@ -684,6 +893,10 @@ export async function buildEntradasItems(
         if (item.cod_item === '004616' || item.cod_item === '4616') {
           console.error(`[buildEntradasItems] Item 004616 FILTRADO: id=${item.id}, document_id=${item.document_id} não encontrado no documentMap`);
         }
+        // Log específico para código 002064
+        if (item.cod_item === '002064' || item.cod_item === '2064' || String(item.cod_item).includes('2064')) {
+          console.error(`[buildEntradasItems] Item 002064 FILTRADO: id=${item.id}, cod_item=${item.cod_item}, document_id=${item.document_id} não encontrado no documentMap`);
+        }
         return null; // ÚNICO filtro aplicado na página Entradas
       }
 
@@ -699,22 +912,36 @@ export async function buildEntradasItems(
 
       // Buscar conversão: verificar se a unidade da NF corresponde a alguma conversão do cod_item
       const unidNF = (item.unid || "").trim();
-      const conversoesDoItem = conversionMapByItem.get(item.cod_item) || [];
+      // Normalizar cod_item para garantir match
+      const codItemNormalizado = normalizeCodItem(item.cod_item);
+      const conversoesDoItem = conversionMapByItem.get(codItemNormalizado) || [];
       
       let unidadeProduto: { unid_conv: string; fat_conv: number } | undefined;
       if (unidNF && conversoesDoItem.length > 0) {
+        // Tentar match exato (case-insensitive)
         unidadeProduto = conversoesDoItem.find(
           (conv) => conv.unid_conv.trim().toUpperCase() === unidNF.toUpperCase()
         );
         
+        // Se não encontrou, tentar match sem espaços
         if (!unidadeProduto) {
           unidadeProduto = conversoesDoItem.find(
             (conv) => conv.unid_conv.trim().replace(/\s+/g, "").toUpperCase() === unidNF.replace(/\s+/g, "").toUpperCase()
           );
         }
         
+        // Se ainda não encontrou e há apenas uma conversão, usar ela (fallback)
         if (!unidadeProduto && conversoesDoItem.length === 1) {
           unidadeProduto = conversoesDoItem[0];
+          console.log(`[buildEntradasItems] Usando conversão única como fallback para ${item.cod_item}: ${unidadeProduto.unid_conv} (unidNF: ${unidNF})`);
+        }
+        
+        // DEBUG: Log quando não encontra conversão mas há conversões disponíveis
+        if (!unidadeProduto && conversoesDoItem.length > 0 && origem === "ENTRADAS") {
+          console.log(`[buildEntradasItems] ⚠️ Conversão não encontrada para ${item.cod_item}:`, {
+            unidNF,
+            conversoesDisponiveis: conversoesDoItem.map(c => c.unid_conv),
+          });
         }
       }
       
@@ -724,6 +951,28 @@ export async function buildEntradasItems(
         quantidadeNF !== 0 ? custoTotal / quantidadeNF : custoTotal;
       const adjustedQty = adjustments.get(item.id) ?? null;
       
+      // Quantidade a ser usada para cálculos (ajustada se existir, senão original)
+      const qtyUsada = adjustedQty !== null && adjustedQty !== undefined 
+        ? adjustedQty 
+        : quantidadeNF;
+      
+      // DEBUG específico para código 002064
+      if ((item.cod_item === "002064" || item.cod_item === "2064" || String(item.cod_item).includes("2064"))) {
+        console.log(`[buildEntradasItems ${origem}] Item 002064 encontrado:`, {
+          itemId: item.id,
+          cod_item: item.cod_item,
+          cod_item_normalizado: codItemNormalizado,
+          document_id: item.document_id,
+          qtd_nf: quantidadeNF,
+          adjustedQty,
+          qtyUsada,
+          qtd_produto: unidadeProduto && unidadeProduto.fat_conv ? qtyUsada * unidadeProduto.fat_conv : qtyUsada,
+          ajusteNoMap: adjustments.get(item.id),
+          totalAjustesNoMap: adjustments.size,
+          custo_total: custoTotal,
+        });
+      }
+      
       // DEBUG específico para código 842
       if ((item.cod_item === "000842" || item.cod_item === "842") && origem === "ENTRADAS") {
         console.log(`[buildEntradasItems ${origem}] Item 842 encontrado:`, {
@@ -731,12 +980,17 @@ export async function buildEntradasItems(
           cod_item: item.cod_item,
           qtd_nf: quantidadeNF,
           adjustedQty,
+          qtyUsada,
           ajusteNoMap: adjustments.get(item.id),
           totalAjustesNoMap: adjustments.size,
         });
       }
 
-      const productInfo = productMap.get(item.cod_item);
+      // CRÍTICO: Normalizar o código do item para garantir consistência em todo o sistema
+      // O código normalizado será usado na agregação e consolidação
+      const codItemFinal = codItemNormalizado;
+      
+      const productInfo = productMap.get(codItemFinal) || productMap.get(item.cod_item);
       return {
         documentItemId: item.id, // SEMPRE o ID do document_item da NF original
         documentId: item.document_id,
@@ -744,9 +998,10 @@ export async function buildEntradasItems(
         fornecedor,
         fornecedorDoc,
         dataDocumento: document.dt_doc,
-        cod_item: item.cod_item,
+        cod_item: codItemFinal, // SEMPRE usar código normalizado
         descr_item:
           productInfo?.descr_item ||
+          catalogDescriptions.get(codItemFinal) ||
           catalogDescriptions.get(item.cod_item) ||
           item.descr_compl ||
           "[Sem descrição]",
@@ -756,15 +1011,54 @@ export async function buildEntradasItems(
         fat_conv: unidadeProduto?.fat_conv || null,
         qtd_produto:
           unidadeProduto && unidadeProduto.fat_conv
-            ? quantidadeNF * unidadeProduto.fat_conv
-            : quantidadeNF,
+            ? qtyUsada * unidadeProduto.fat_conv
+            : qtyUsada,
         custo_unitario: custoUnitario,
         custo_total: custoTotal,
         adjusted_qty: adjustedQty,
+        sped_file_id: document.sped_file_id, // ID do SPED ao qual o documento pertence
       };
     })
     .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
+  // DEBUG: Verificar se há itens 002064 nos documentItems
+  const items2064 = documentItems.filter((item) => 
+    item.cod_item === "002064" || item.cod_item === "2064" || String(item.cod_item).includes("2064")
+  );
+  console.log(`[buildEntradasItems ${origem}] Total de document_items com código 002064: ${items2064.length}`);
+  if (items2064.length > 0) {
+    items2064.forEach((item, idx) => {
+      const doc = documentMap.get(item.document_id);
+      console.log(`[buildEntradasItems ${origem}] Item 002064 [${idx + 1}]:`, {
+        id: item.id,
+        cod_item: item.cod_item,
+        document_id: item.document_id,
+        documento_encontrado: doc ? "SIM" : "NÃO",
+        qtd: item.qtd,
+      });
+    });
+  }
+  
+  // Verificar se há entries 002064 após o filtro
+  const entries2064 = entries.filter((e) => 
+    e.cod_item === "002064" || e.cod_item === "2064" || String(e.cod_item).includes("2064")
+  );
+  console.log(`[buildEntradasItems ${origem}] Total de entries com código 002064 após filtro: ${entries2064.length}`);
+  if (entries2064.length > 0) {
+    entries2064.forEach((e, idx) => {
+      console.log(`[buildEntradasItems ${origem}] Entry 002064 [${idx + 1}]:`, {
+        documentItemId: e.documentItemId,
+        cod_item: e.cod_item,
+        quantidade_nf: e.quantidade_nf,
+        adjusted_qty: e.adjusted_qty,
+        qtd_produto: e.qtd_produto,
+        custo_total: e.custo_total,
+      });
+    });
+  } else if (items2064.length > 0) {
+    console.error(`[buildEntradasItems ${origem}] ⚠️ ERRO: ${items2064.length} document_items 002064 encontrados, mas 0 entries após filtro!`);
+  }
+  
   // Log detalhado dos ajustes encontrados para o código 842
   const itemIds842 = documentItems
     .filter((item) => item.cod_item === "000842" || item.cod_item === "842")
@@ -837,6 +1131,49 @@ export async function buildEntradasItems(
     console.error(`⚠️ O documento ${entryProblematico.documentId} não está no SPED selecionado ou não tem ind_oper='0'`);
   }
 
-  return entries;
+  // ============================================================================
+  // DEDUPLICAÇÃO CRÍTICA: Garantir que cada document_item_id aparece UMA vez
+  // ============================================================================
+  // Esta é a correção principal para evitar entradas duplicadas na Consolidação
+  const uniqueEntriesByDocumentItemId = new Map<string, EntradaItem>();
+  
+  for (const entry of entries) {
+    if (!entry.documentItemId) {
+      console.warn(`[buildEntradasItems] Entry sem documentItemId encontrado, pulando:`, entry);
+      continue;
+    }
+    
+    if (!uniqueEntriesByDocumentItemId.has(entry.documentItemId)) {
+      uniqueEntriesByDocumentItemId.set(entry.documentItemId, entry);
+    } else {
+      // Log quando encontra duplicata (isso não deveria acontecer, mas vamos registrar)
+      const existing = uniqueEntriesByDocumentItemId.get(entry.documentItemId)!;
+      console.warn(`[buildEntradasItems] ⚠️ DUPLICATA DETECTADA para documentItemId ${entry.documentItemId}:`, {
+        existing: {
+          documentId: existing.documentId,
+          cod_item: existing.cod_item,
+          nota: existing.nota,
+        },
+        duplicate: {
+          documentId: entry.documentId,
+          cod_item: entry.cod_item,
+          nota: entry.nota,
+        },
+      });
+    }
+  }
+  
+  const entriesDeduplicadas = Array.from(uniqueEntriesByDocumentItemId.values());
+  
+  console.log("[DEBUG ENTRADAS] totalEntriesAposDeduplicacao:", entriesDeduplicadas.length);
+  console.log("[DEBUG ENTRADAS] totalEntries ANTES da deduplicação:", entries.length);
+  if (entries.length !== entriesDeduplicadas.length) {
+    console.warn(`[DEBUG ENTRADAS] ⚠️ DEDUPLICAÇÃO: ${entries.length} entries antes, ${entriesDeduplicadas.length} depois (${entries.length - entriesDeduplicadas.length} duplicatas removidas)`);
+  }
+  if (entries.length !== entriesDeduplicadas.length) {
+    console.warn(`[buildEntradasItems] ⚠️ DEDUPLICAÇÃO: ${entries.length} entries antes, ${entriesDeduplicadas.length} depois (${entries.length - entriesDeduplicadas.length} duplicatas removidas)`);
+  }
+
+  return entriesDeduplicadas;
 }
 

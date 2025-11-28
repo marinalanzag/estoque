@@ -19,13 +19,15 @@ interface EntryRow {
   custo_unitario: number;
   custo_total: number;
   adjusted_qty: number | null;
+  sped_file_id: string;
 }
 
 interface EntriesTableProps {
   entries: EntryRow[];
+  selectedSpedFileId?: string; // ID do SPED selecionado para filtrar o custo total
 }
 
-export default function EntriesTable({ entries }: EntriesTableProps) {
+export default function EntriesTable({ entries, selectedSpedFileId }: EntriesTableProps) {
   const [rows, setRows] = useState(entries);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [loadingRow, setLoadingRow] = useState<string | null>(null);
@@ -58,25 +60,48 @@ export default function EntriesTable({ entries }: EntriesTableProps) {
   }, [entries]);
 
 
+  // Calcular custo total apenas dos itens do SPED selecionado
   const totalCusto = useMemo(
-    () => rows.reduce((acc, row) => acc + row.custo_total, 0),
-    [rows]
+    () => {
+      if (selectedSpedFileId) {
+        // Filtrar apenas itens do SPED selecionado
+        return rows
+          .filter(row => row.sped_file_id === selectedSpedFileId)
+          .reduce((acc, row) => acc + row.custo_total, 0);
+      }
+      // Se não houver SPED selecionado, somar todos (comportamento anterior)
+      return rows.reduce((acc, row) => acc + row.custo_total, 0);
+    },
+    [rows, selectedSpedFileId]
   );
 
+  // Calcular quantidade NF apenas dos itens do SPED selecionado
   const totalQtdNF = useMemo(
-    () => rows.reduce((acc, row) => acc + row.quantidade_nf, 0),
-    [rows]
+    () => {
+      if (selectedSpedFileId) {
+        return rows
+          .filter(row => row.sped_file_id === selectedSpedFileId)
+          .reduce((acc, row) => acc + row.quantidade_nf, 0);
+      }
+      return rows.reduce((acc, row) => acc + row.quantidade_nf, 0);
+    },
+    [rows, selectedSpedFileId]
   );
 
+  // Calcular quantidade ajustada apenas dos itens do SPED selecionado
   const totalQtdAjustada = useMemo(() => {
-    return rows.reduce((acc, row) => {
+    const rowsToSum = selectedSpedFileId 
+      ? rows.filter(row => row.sped_file_id === selectedSpedFileId)
+      : rows;
+    
+    return rowsToSum.reduce((acc, row) => {
       const adjusted = row.adjusted_qty;
       if (adjusted !== null && adjusted !== undefined) {
         return acc + adjusted;
       }
       return acc + row.quantidade_nf;
     }, 0);
-  }, [rows]);
+  }, [rows, selectedSpedFileId]);
 
   // Filtrar linhas baseado no termo de busca
   const filteredRows = useMemo(() => {
@@ -361,6 +386,12 @@ export default function EntriesTable({ entries }: EntriesTableProps) {
               
               // Verificar se tem conversão (bloco 0220)
               const temConversao = row.unidade_produto !== null && row.fat_conv !== null && row.fat_conv !== 1;
+              
+              // Recalcular qtd_produto se houver ajuste e conversão
+              const qtdProdutoAjustada = temConversao && isAdjusted && row.adjusted_qty !== null
+                ? row.adjusted_qty * (row.fat_conv ?? 1)
+                : row.qtd_produto;
+              
               const foiSalvo = savedItems.has(row.documentItemId);
               
               // Criar uma função wrapper para garantir que o row correto seja usado
@@ -436,16 +467,35 @@ export default function EntriesTable({ entries }: EntriesTableProps) {
                     {temConversao ? (
                       <div className="flex flex-col items-end">
                         <span className="font-semibold text-blue-600">
-                          {row.qtd_produto.toLocaleString("pt-BR", {
+                          {qtdProdutoAjustada.toLocaleString("pt-BR", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
                         </span>
                         <span className="text-xs text-gray-500">
-                          {row.quantidade_nf.toLocaleString("pt-BR", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })} × {row.fat_conv?.toLocaleString("pt-BR", {
+                          {isAdjusted && row.adjusted_qty !== null ? (
+                            <>
+                              <span className="line-through text-gray-400">
+                                {row.quantidade_nf.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </span>
+                              {" "}
+                              <span className="text-blue-600 font-medium">
+                                {row.adjusted_qty.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </span>
+                            </>
+                          ) : (
+                            row.quantidade_nf.toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })
+                          )}{" "}
+                          × {row.fat_conv?.toLocaleString("pt-BR", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 4,
                           })}

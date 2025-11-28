@@ -235,21 +235,102 @@ export async function POST(req: NextRequest) {
       .eq("is_active", true)
       .single();
 
-    const { data: importBatch, error: importError } = await supabaseAdmin
+    // Verificar se já existe estoque base para o período
+    let isBase = false;
+    if (activePeriod) {
+      try {
+        const { data: existingBase, error: baseCheckError } = await supabaseAdmin
+          .from("stock_initial_imports")
+          .select("id")
+          .eq("period_id", activePeriod.id)
+          .eq("is_base", true)
+          .maybeSingle(); // Usar maybeSingle ao invés de single para não dar erro se não encontrar
+        
+        // Se não há base e não houve erro (ou erro foi apenas "não encontrado"), marcar este como base
+        if (!existingBase && (!baseCheckError || baseCheckError.code === 'PGRST116')) {
+          isBase = true;
+        }
+      } catch (err) {
+        // Se a coluna is_base não existir, continuar sem marcar como base
+        console.warn("Aviso: Não foi possível verificar estoque base (coluna pode não existir):", err);
+        isBase = false;
+      }
+    }
+
+    // Preparar dados para inserção
+    const insertData: any = {
+      label,
+      total_items: records.length,
+      total_value: totalValue,
+      period_id: activePeriod?.id || null,
+    };
+    
+    // Tentar adicionar is_base apenas se a coluna existir
+    if (isBase) {
+      insertData.is_base = true;
+    }
+
+    let importBatch: { id: string } | null = null;
+    let importError: any = null;
+    
+    const { data: batchData, error: batchError } = await supabaseAdmin
       .from("stock_initial_imports")
-      .insert({
-        label,
-        total_items: records.length,
-        total_value: totalValue,
-        period_id: activePeriod?.id || null,
-      })
+      .insert(insertData)
       .select("id")
       .single();
 
+    importBatch = batchData;
+    importError = batchError;
+
     if (importError || !importBatch) {
       console.error("Erro ao criar registro de importação:", importError);
+      // Se o erro for relacionado à coluna is_base, tentar novamente sem ela
+      if (importError?.message?.includes("is_base") || importError?.code === '42703' || importError?.code === 'PGRST116') {
+        console.log("Tentando inserir sem is_base...");
+        const { data: retryBatch, error: retryError } = await supabaseAdmin
+          .from("stock_initial_imports")
+          .insert({
+            label,
+            total_items: records.length,
+            total_value: totalValue,
+            period_id: activePeriod?.id || null,
+          })
+          .select("id")
+          .single();
+        
+        if (retryError || !retryBatch) {
+          return NextResponse.json(
+            { error: `Erro ao registrar importação: ${retryError?.message || importError?.message}` },
+            { status: 500 }
+          );
+        }
+        
+        importBatch = retryBatch;
+        
+        // Se inseriu sem is_base mas deveria ser base, tentar atualizar depois
+        if (isBase && activePeriod) {
+          try {
+            await supabaseAdmin
+              .from("stock_initial_imports")
+              .update({ is_base: true })
+              .eq("id", retryBatch.id);
+          } catch (updateErr) {
+            console.warn("Não foi possível marcar como base (coluna pode não existir):", updateErr);
+          }
+        }
+      } else {
+        return NextResponse.json(
+          { error: `Erro ao registrar importação: ${importError?.message || "Erro desconhecido"}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Validar que importBatch foi criado
+    if (!importBatch || !importBatch.id) {
+      console.error("Erro crítico: importBatch não foi criado corretamente");
       return NextResponse.json(
-        { error: "Erro ao registrar importação do estoque inicial" },
+        { error: "Erro ao criar registro de importação: batch não foi criado" },
         { status: 500 }
       );
     }

@@ -36,6 +36,7 @@ interface SaidasFilterProps {
   selectedGroupKey: string | null;
   selectedImportIds: string[] | null;
   activePeriod?: { id: string } | null;
+  hasBase?: boolean;
 }
 
 export default function SaidasFilter({
@@ -45,6 +46,7 @@ export default function SaidasFilter({
   selectedGroupKey,
   selectedImportIds,
   activePeriod,
+  hasBase = false,
 }: SaidasFilterProps) {
   const router = useRouter();
   const [fileId, setFileId] = useState(selectedFileId);
@@ -97,6 +99,49 @@ export default function SaidasFilter({
   const handleGroupChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setGroupKey(e.target.value);
   };
+
+  if (hasBase && activePeriod) {
+    // Quando há base, mostrar apenas informações
+    const selectedFile = spedFiles.find((f) => f.id === selectedFileId);
+    const baseGroups = groupedXmlImports.filter((group) =>
+      selectedImportIds?.some((id) => group.import_ids.includes(id))
+    );
+    
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            <span className="font-medium">Período ativo:</span>
+            <span>{activePeriod.id}</span>
+          </div>
+          {selectedFile && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span className="font-medium">SPED:</span>
+              <span>{selectedFile.name}</span>
+            </div>
+          )}
+          {baseGroups.length > 0 && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span className="font-medium">XMLs base:</span>
+              <span>
+                {baseGroups.length} grupo(s) • {selectedImportIds?.length || 0} importação(ões)
+              </span>
+            </div>
+          )}
+          <p className="text-xs text-gray-500 mt-2">
+            Para alterar a base, acesse a{" "}
+            <a
+              href="/periodos/configuracao"
+              className="text-blue-600 hover:text-blue-800 underline"
+            >
+              página de configuração
+            </a>
+            .
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4">

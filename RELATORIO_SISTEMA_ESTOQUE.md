@@ -277,3 +277,4 @@ O inventário final é o estoque consolidado menos os ajustes de baixa positiva 
 
 **A mágica**: Quando você ajusta uma quantidade na aba Entradas, esse ajuste aparece automaticamente em todas as outras abas, sem precisar fazer nada!
 
+

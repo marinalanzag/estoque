@@ -20,11 +20,13 @@ interface InventoryItem {
 interface InventoryFinalTableProps {
   spedFileId: string;
   fileName: string;
+  periodId?: string | null;
 }
 
 export default function InventoryFinalTable({
   spedFileId,
   fileName,
+  periodId,
 }: InventoryFinalTableProps) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [summary, setSummary] = useState<any>(null);
@@ -40,8 +42,14 @@ export default function InventoryFinalTable({
     try {
       setLoading(true);
       setError(null);
+      const params = new URLSearchParams({
+        sped_file_id: spedFileId,
+      });
+      if (periodId) {
+        params.set("period_id", periodId);
+      }
       const res = await fetch(
-        `/api/inventory-final/data?sped_file_id=${spedFileId}`
+        `/api/inventory-final/data?${params.toString()}`
       );
       const data = await res.json();
 
@@ -56,7 +64,7 @@ export default function InventoryFinalTable({
     } finally {
       setLoading(false);
     }
-  }, [spedFileId]);
+  }, [spedFileId, periodId]);
 
   useEffect(() => {
     loadData();

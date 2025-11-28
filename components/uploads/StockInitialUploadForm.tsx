@@ -89,7 +89,7 @@ export default function StockInitialUploadForm({
           setStatus(
             `Estoque inicial importado com sucesso! Registros: ${
               json.count || 0
-            }`
+            }${json.importId ? "\n\nRedirecionando para configuração..." : ""}`
           );
           setFile(null);
           setLabel("");
@@ -98,6 +98,13 @@ export default function StockInitialUploadForm({
           ) as HTMLInputElement | null;
           if (fileInput) fileInput.value = "";
           await loadImports();
+          
+          // Se foi importado com sucesso e há importId, redirecionar para configuração após 2 segundos
+          if (json.importId && variant === "standalone") {
+            setTimeout(() => {
+              window.location.href = `/periodos/configuracao?importId=${json.importId}`;
+            }, 2000);
+          }
         } else {
           setStatus(`Erro: ${json.error || "Erro desconhecido"}`);
           console.error("Erro da API:", json);
@@ -303,10 +310,10 @@ export default function StockInitialUploadForm({
       {!hideFooter && (
         <div className="mt-6">
           <Link
-            href="/"
+            href="/periodos/configuracao"
             className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
           >
-            ← Voltar ao dashboard
+            ← Voltar à configuração
           </Link>
         </div>
       )}

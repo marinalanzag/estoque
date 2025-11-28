@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
+import { setActivePeriodCookie } from "@/lib/periods";
+import { cookies } from "next/headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +36,11 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       throw new Error(`Erro ao ativar período: ${error.message}`);
+    }
+
+    // Setar cookie com o período ativo
+    if (data) {
+      await setActivePeriodCookie(data.year, data.month);
     }
 
     return NextResponse.json({

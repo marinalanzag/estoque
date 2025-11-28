@@ -54,11 +54,21 @@ export async function POST(req: NextRequest) {
     const total_value = Number(qtd_baixada) * Number(unit_cost);
 
     // Buscar período ativo
-    const { data: activePeriod } = await supabaseAdmin
+    const { data: activePeriod, error: periodError } = await supabaseAdmin
       .from("periods")
       .select("id")
       .eq("is_active", true)
       .single();
+
+    if (periodError && periodError.code !== "PGRST116") {
+      console.error("[api/adjustments/create] Erro ao buscar período ativo:", periodError);
+    }
+
+    const periodId = activePeriod?.id || null;
+    console.log("[api/adjustments/create] Período ativo encontrado:", periodId);
+    if (!periodId) {
+      console.warn("[api/adjustments/create] ⚠️ ATENÇÃO: Nenhum período ativo encontrado! O ajuste será criado sem period_id.");
+    }
 
     // Inserir ajuste
     const { data, error } = await supabaseAdmin
@@ -70,18 +80,26 @@ export async function POST(req: NextRequest) {
         qtd_baixada: Number(qtd_baixada),
         unit_cost: Number(unit_cost),
         total_value,
-        period_id: activePeriod?.id || null,
+        period_id: periodId,
       })
       .select()
       .single();
 
     if (error) {
-      console.error("Erro ao criar ajuste:", error);
+      console.error("[api/adjustments/create] ❌ Erro ao criar ajuste:", error);
       return NextResponse.json(
         { error: `Erro ao criar ajuste: ${error.message}` },
         { status: 500 }
       );
     }
+
+    console.log("[api/adjustments/create] ✅ Ajuste criado com sucesso:", {
+      id: data.id,
+      cod_negativo: data.cod_negativo,
+      cod_positivo: data.cod_positivo,
+      period_id: data.period_id,
+      sped_file_id: data.sped_file_id,
+    });
 
     return NextResponse.json({
       ok: true,

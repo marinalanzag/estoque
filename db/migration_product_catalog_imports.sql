@@ -19,3 +19,4 @@ comment on column public.product_catalog_imports.total_items is 'Total de itens 
 
 
 
+

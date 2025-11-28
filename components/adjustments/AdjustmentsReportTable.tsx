@@ -42,20 +42,41 @@ export default function AdjustmentsReportTable({
 
   const loadReport = useCallback(async (silent = false) => {
     try {
+      console.log("[AdjustmentsReportTable] 🔄 Iniciando loadReport para spedFileId:", spedFileId);
+      
       if (!silent) {
         setLoading(true);
       } else {
         setIsRefreshing(true);
       }
       setError(null);
-      const res = await fetch(
-        `/api/adjustments/report?sped_file_id=${spedFileId}`
-      );
+      
+      // Buscar período ativo para garantir que busca os ajustes do período correto
+      const periodRes = await fetch("/api/periods/active");
+      const periodData = await periodRes.ok ? await periodRes.json() : null;
+      const periodId = periodData?.period?.id;
+      
+      console.log("[AdjustmentsReportTable] Período ativo encontrado:", periodId);
+      
+      let url = `/api/adjustments/report?sped_file_id=${spedFileId}`;
+      if (periodId) {
+        url += `&period_id=${periodId}`;
+      }
+      
+      console.log("[AdjustmentsReportTable] Buscando relatório na URL:", url);
+      const res = await fetch(url, {
+        cache: 'no-store', // Forçar busca sempre atualizada
+      });
       const data = await res.json();
 
       if (!res.ok) {
         throw new Error(data.error || "Erro ao carregar relatório");
       }
+
+      console.log("[AdjustmentsReportTable] ✅ Relatório recarregado:", {
+        totalAjustes: data.report?.length || 0,
+        summary: data.summary,
+      });
 
       setReport(data.report || []);
       setSummary(data.summary || {});
@@ -63,6 +84,7 @@ export default function AdjustmentsReportTable({
       setImpactoPositivo(data.impacto_por_positivo || []);
       setLastUpdate(new Date());
     } catch (err) {
+      console.error("[AdjustmentsReportTable] ❌ Erro ao recarregar relatório:", err);
       setError(err instanceof Error ? err.message : "Erro desconhecido");
     } finally {
       setLoading(false);
@@ -77,11 +99,25 @@ export default function AdjustmentsReportTable({
   // Recarregar quando a aba ganha foco (usuário volta para a página)
   useEffect(() => {
     const handleFocus = () => {
+      console.log("[AdjustmentsReportTable] Página recebeu foco, recarregando relatório...");
       loadReport(true);
     };
 
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
+  }, [loadReport]);
+
+  // Recarregar quando a página fica visível novamente (usuário volta para a aba)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log("[AdjustmentsReportTable] Página visível novamente, recarregando relatório...");
+        loadReport(true);
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [loadReport]);
 
   // Polling: verificar novos ajustes a cada 5 segundos quando a aba está visível
@@ -91,6 +127,7 @@ export default function AdjustmentsReportTable({
     const checkForUpdates = () => {
       // Só verificar se a aba está visível e não estiver carregando
       if (!document.hidden && !loading && !isRefreshing) {
+        console.log("[AdjustmentsReportTable] Polling: verificando atualizações...");
         loadReport(true);
       }
     };

@@ -48,12 +48,12 @@ export default async function InventarioPage({ params }: PageProps) {
             <p className="text-sm">Erro: {fileError.message}</p>
           )}
           <div className="mt-4">
-            <a
-              href="/sped"
+            <Link
+              href="/periodos/configuracao"
               className="text-blue-600 hover:text-blue-800 hover:underline"
             >
-              ← Voltar para lista de arquivos SPED
-            </a>
+              ← Voltar à configuração do período
+            </Link>
           </div>
         </div>
       </div>

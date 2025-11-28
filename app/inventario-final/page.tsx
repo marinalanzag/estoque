@@ -12,11 +12,25 @@ export default async function InventarioFinalPage({
 }: InventarioFinalPageProps) {
   const supabaseAdmin = getSupabaseAdmin();
 
-  // Buscar arquivos SPED disponíveis
-  const { data: spedFiles } = await supabaseAdmin
+  // CRÍTICO: Buscar período ativo e usar SPED base (mesma lógica da aba Entradas)
+  const { getActivePeriodFromRequest, getBaseSpedFileForPeriod } = await import("@/lib/periods");
+  const urlParams = new URLSearchParams();
+  if (searchParams?.fileId) {
+    urlParams.set("fileId", searchParams.fileId);
+  }
+  const activePeriod = await getActivePeriodFromRequest(urlParams);
+
+  // Buscar arquivos SPED do período ativo (ou todos se não houver período ativo)
+  const spedQuery = supabaseAdmin
     .from("sped_files")
-    .select("id, name, uploaded_at")
+    .select("id, name, uploaded_at, is_base")
     .order("uploaded_at", { ascending: false });
+
+  if (activePeriod) {
+    spedQuery.eq("period_id", activePeriod.id);
+  }
+
+  const { data: spedFiles } = await spedQuery;
 
   if (!spedFiles || spedFiles.length === 0) {
     return (
@@ -31,11 +45,27 @@ export default async function InventarioFinalPage({
     );
   }
 
-  const requestedFileId = searchParams?.fileId ?? null;
-  const selectedFileId =
-    requestedFileId && spedFiles.some((file) => file.id === requestedFileId)
-      ? requestedFileId
-      : spedFiles[0]?.id ?? null;
+  // IMPORTANTE: Se houver período ativo, SEMPRE usar o SPED base, ignorando qualquer seleção manual
+  let selectedFileId: string | null = null;
+  
+  if (activePeriod) {
+    const baseSpedId = await getBaseSpedFileForPeriod(activePeriod.id);
+    if (baseSpedId) {
+      selectedFileId = baseSpedId;
+      console.log("[inventario-final/page] Usando SPED base do período:", baseSpedId);
+    } else {
+      // Se não há base, usar o primeiro SPED do período
+      selectedFileId = spedFiles[0]?.id ?? null;
+      console.warn("[inventario-final/page] Nenhum SPED base configurado, usando primeiro SPED do período");
+    }
+  } else {
+    // Se não há período ativo, usar o SPED solicitado ou o primeiro disponível
+    const requestedFileId = searchParams?.fileId ?? null;
+    selectedFileId =
+      requestedFileId && spedFiles.some((file) => file.id === requestedFileId)
+        ? requestedFileId
+        : spedFiles[0]?.id ?? null;
+  }
 
   if (!selectedFileId) {
     return (
@@ -51,6 +81,7 @@ export default async function InventarioFinalPage({
   }
 
   const selectedFile = spedFiles.find((f) => f.id === selectedFileId);
+  const activePeriodId = activePeriod?.id ?? null;
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -94,6 +125,7 @@ export default async function InventarioFinalPage({
       <InventoryFinalTable
         spedFileId={selectedFileId}
         fileName={selectedFile?.name ?? "Arquivo SPED"}
+        periodId={activePeriodId}
       />
     </div>
   );

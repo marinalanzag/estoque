@@ -284,17 +284,17 @@ export default function SpedUploadForm({
       {!hideFooter && (
         <div className="mt-6 space-y-2">
           <Link
-            href="/sped"
+            href="/periodos/configuracao"
             className="inline-block px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm font-medium"
           >
-            Ver arquivos SPED importados
+            Ver configuração do período
           </Link>
           <div>
             <Link
-              href="/"
+              href="/periodos/configuracao"
               className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
             >
-              ← Voltar ao dashboard
+              ← Voltar à configuração
             </Link>
           </div>
         </div>

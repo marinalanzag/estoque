@@ -31,6 +31,7 @@ interface AdjustmentsTableProps {
   fileName: string;
   initialAdjustments: Adjustment[];
   onAdjustmentsChange?: (adjustments: Adjustment[]) => void;
+  onRefresh?: () => void;
 }
 
 export default function AdjustmentsTable({
@@ -38,15 +39,46 @@ export default function AdjustmentsTable({
   fileName,
   initialAdjustments,
   onAdjustmentsChange,
+  onRefresh,
 }: AdjustmentsTableProps) {
   const [negativos, setNegativos] = useState<InventoryItem[]>([]);
   const [positivos, setPositivos] = useState<InventoryItem[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>(initialAdjustments);
 
-  // Sincronizar ajustes iniciais quando mudarem
+  // Sincronizar ajustes iniciais quando mudarem (ex: quando volta para a página)
   useEffect(() => {
-    setAdjustments(initialAdjustments);
-  }, [initialAdjustments]);
+    console.log("[AdjustmentsTable] 🔄 useEffect initialAdjustments - recebidos:", initialAdjustments.length);
+    console.log("[AdjustmentsTable] 🔄 Ajustes atuais no estado:", adjustments.length);
+    console.log("[AdjustmentsTable] 🔄 IDs iniciais:", initialAdjustments.map(a => a.id));
+    console.log("[AdjustmentsTable] 🔄 IDs atuais:", adjustments.map(a => a.id));
+    
+    // Sempre atualizar com os dados do servidor quando initialAdjustments mudar
+    // Isso garante que mudanças externas (ex: refresh da página) sejam refletidas
+    if (initialAdjustments.length > 0 || adjustments.length === 0) {
+      console.log("[AdjustmentsTable] ✅ Atualizando ajustes do servidor");
+      setAdjustments(initialAdjustments);
+      if (onAdjustmentsChange) {
+        onAdjustmentsChange(initialAdjustments);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialAdjustments]); // Remover onAdjustmentsChange da dependência para evitar loops
+  
+  // Recarregar ajustes quando a página recebe foco (usuário volta para a aba)
+  useEffect(() => {
+    const handleFocus = () => {
+      console.log("[AdjustmentsTable] Página recebeu foco, recarregando ajustes...");
+      loadAdjustments();
+      loadInventoryData();
+      // Se houver função de refresh do componente pai, chamá-la também
+      if (onRefresh) {
+        onRefresh();
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [spedFileId, onRefresh]); // Incluir onRefresh nas dependências
 
   // Notificar mudanças nos ajustes
   useEffect(() => {
@@ -61,6 +93,14 @@ export default function AdjustmentsTable({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  
+  // Filtros e busca para positivos
+  const [searchPositivos, setSearchPositivos] = useState<string>("");
+  const [sortPositivos, setSortPositivos] = useState<"codigo-asc" | "codigo-desc" | "descricao-asc" | "descricao-desc" | "quantidade-desc" | "quantidade-asc" | "usado-desc" | "usado-asc" | "disponivel-desc" | "disponivel-asc">("quantidade-desc");
+  
+  // Filtros e busca para negativos
+  const [searchNegativos, setSearchNegativos] = useState<string>("");
+  const [sortNegativos, setSortNegativos] = useState<"codigo-asc" | "codigo-desc" | "descricao-asc" | "descricao-desc" | "saldo-asc" | "saldo-desc" | "status">("saldo-asc");
 
   const loadInventoryData = useCallback(async () => {
     try {
@@ -84,21 +124,53 @@ export default function AdjustmentsTable({
   }, [spedFileId]);
 
   useEffect(() => {
+    console.log("[AdjustmentsTable] useEffect inicial - carregando dados para spedFileId:", spedFileId);
     loadInventoryData();
-  }, [loadInventoryData]);
+    // Carregar ajustes ao montar o componente para garantir sincronização
+    loadAdjustments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spedFileId]); // Carregar quando o SPED mudar
 
   const loadAdjustments = async () => {
     try {
-      const res = await fetch(
-        `/api/adjustments/list?sped_file_id=${spedFileId}`
-      );
+      console.log("[AdjustmentsTable] 🔄 Iniciando loadAdjustments para spedFileId:", spedFileId);
+      
+      // Buscar período ativo para garantir que busca os ajustes do período correto
+      const periodRes = await fetch("/api/periods/active");
+      const periodData = await periodRes.ok ? await periodRes.json() : null;
+      const periodId = periodData?.period?.id;
+      
+      console.log("[AdjustmentsTable] Período ativo encontrado:", periodId);
+      
+      let url = `/api/adjustments/list?sped_file_id=${spedFileId}`;
+      if (periodId) {
+        url += `&period_id=${periodId}`;
+      }
+      
+      console.log("[AdjustmentsTable] Buscando ajustes na URL:", url);
+      const res = await fetch(url, {
+        cache: 'no-store', // Forçar busca sempre atualizada
+      });
       const data = await res.json();
 
       if (res.ok && data.adjustments) {
+        console.log("[AdjustmentsTable] ✅ Ajustes recarregados do banco:", data.adjustments.length);
+        console.log("[AdjustmentsTable] IDs dos ajustes:", data.adjustments.map((a: Adjustment) => a.id));
+        
+        // Sempre atualizar o estado com os dados do banco
         setAdjustments(data.adjustments);
+        
+        // Notificar componente pai sobre a mudança
+        if (onAdjustmentsChange) {
+          console.log("[AdjustmentsTable] Notificando componente pai sobre ajustes recarregados");
+          onAdjustmentsChange(data.adjustments);
+        }
+      } else {
+        console.error("[AdjustmentsTable] ❌ Erro ao recarregar ajustes:", data.error);
+        console.error("[AdjustmentsTable] Resposta completa:", data);
       }
     } catch (err) {
-      console.error("Erro ao recarregar ajustes:", err);
+      console.error("[AdjustmentsTable] ❌ Erro ao recarregar ajustes:", err);
     }
   };
 
@@ -152,21 +224,56 @@ export default function AdjustmentsTable({
         throw new Error(data.error || "Erro ao criar ajuste");
       }
 
+      console.log("[AdjustmentsTable] ✅ Ajuste salvo com sucesso:", data.adjustment);
       setSuccess(`✅ Ajuste criado e salvo com sucesso! Código ${data.adjustment.cod_positivo} → ${data.adjustment.cod_negativo} - Qtd: ${data.adjustment.qtd_baixada}`);
       
-      // Atualizar estado local IMEDIATAMENTE com o novo ajuste
-      const newAdjustments = [data.adjustment, ...adjustments];
-      setAdjustments(newAdjustments);
-      
+      // Limpar formulário primeiro
       setSelectedNegativo(null);
       setSelectedPositivo(null);
       setQtdBaixada("");
       
-      // Recarregar dados do inventário para refletir os ajustes
-      await loadInventoryData();
+      // Adicionar o novo ajuste ao estado IMEDIATAMENTE para feedback visual
+      const newAdjustment = data.adjustment;
+      console.log("[AdjustmentsTable] Novo ajuste recebido do servidor:", newAdjustment);
+      
+      // Atualizar estado e notificar componente pai em uma única operação
+      setAdjustments((prev) => {
+        // Verificar se já não existe (evitar duplicação)
+        const exists = prev.some(a => a.id === newAdjustment.id);
+        if (exists) {
+          console.log("[AdjustmentsTable] Ajuste já existe no estado, não adicionando duplicado");
+          return prev;
+        }
+        console.log("[AdjustmentsTable] Adicionando novo ajuste ao estado:", newAdjustment.id);
+        const updated = [newAdjustment, ...prev];
+        console.log("[AdjustmentsTable] Total de ajustes após adicionar:", updated.length);
+        
+        // Notificar componente pai com o novo estado
+        if (onAdjustmentsChange) {
+          onAdjustmentsChange(updated);
+        }
+        
+        return updated;
+      });
+      
+      // Pequeno delay para garantir que o banco processou a inserção
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       // Recarregar ajustes do banco para garantir sincronização completa
+      console.log("[AdjustmentsTable] Recarregando ajustes do banco...");
       await loadAdjustments();
+      
+      // Recarregar dados do inventário para refletir os ajustes
+      console.log("[AdjustmentsTable] Recarregando dados do inventário...");
+      await loadInventoryData();
+      
+      // Se houver função de refresh do componente pai, chamá-la também
+      if (onRefresh) {
+        console.log("[AdjustmentsTable] Chamando onRefresh do componente pai...");
+        onRefresh();
+      }
+      
+      console.log("[AdjustmentsTable] ✅ Processo de salvamento concluído");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido");
     } finally {
@@ -185,6 +292,148 @@ export default function AdjustmentsTable({
     (acc, adj) => acc + Number(adj.total_value ?? 0),
     0
   );
+
+  // Função para filtrar e ordenar positivos
+  const getFilteredAndSortedPositivos = () => {
+    let filtered = [...positivos];
+
+    // Aplicar busca
+    if (searchPositivos.trim()) {
+      const searchLower = searchPositivos.toLowerCase().trim();
+      filtered = filtered.filter((item) => {
+        const codItem = (item.cod_item || "").toLowerCase();
+        const descr = (item.descr_item || "").toLowerCase();
+        return codItem.includes(searchLower) || descr.includes(searchLower);
+      });
+    }
+
+    // Aplicar ordenação
+    filtered.sort((a, b) => {
+      const ajustesA = adjustments
+        .filter((adj) => adj.cod_positivo === a.cod_item)
+        .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
+      const ajustesB = adjustments
+        .filter((adj) => adj.cod_positivo === b.cod_item)
+        .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
+      const disponivelA = a.estoque_final - ajustesA;
+      const disponivelB = b.estoque_final - ajustesB;
+
+      switch (sortPositivos) {
+        case "codigo-asc":
+          return a.cod_item.localeCompare(b.cod_item);
+        case "codigo-desc":
+          return b.cod_item.localeCompare(a.cod_item);
+        case "descricao-asc":
+          return (a.descr_item || "").localeCompare(b.descr_item || "");
+        case "descricao-desc":
+          return (b.descr_item || "").localeCompare(a.descr_item || "");
+        case "quantidade-desc":
+          return b.estoque_final - a.estoque_final;
+        case "quantidade-asc":
+          return a.estoque_final - b.estoque_final;
+        case "usado-desc":
+          return ajustesB - ajustesA;
+        case "usado-asc":
+          return ajustesA - ajustesB;
+        case "disponivel-desc":
+          return disponivelB - disponivelA;
+        case "disponivel-asc":
+          return disponivelA - disponivelB;
+        default:
+          return 0;
+      }
+    });
+
+    return filtered;
+  };
+
+  // Função para filtrar e ordenar negativos
+  const getFilteredAndSortedNegativos = () => {
+    let filtered = [...negativos];
+
+    // Aplicar busca
+    if (searchNegativos.trim()) {
+      const searchLower = searchNegativos.toLowerCase().trim();
+      filtered = filtered.filter((item) => {
+        const codItem = (item.cod_item || "").toLowerCase();
+        const descr = (item.descr_item || "").toLowerCase();
+        return codItem.includes(searchLower) || descr.includes(searchLower);
+      });
+    }
+
+    // Aplicar ordenação
+    filtered.sort((a, b) => {
+      const ajustesA = adjustments
+        .filter((adj) => adj.cod_negativo === a.cod_item)
+        .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
+      const ajustesB = adjustments
+        .filter((adj) => adj.cod_negativo === b.cod_item)
+        .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
+      const saldoAposA = a.estoque_final + ajustesA;
+      const saldoAposB = b.estoque_final + ajustesB;
+      const resolvidoA = saldoAposA >= 0;
+      const resolvidoB = saldoAposB >= 0;
+
+      switch (sortNegativos) {
+        case "codigo-asc":
+          return a.cod_item.localeCompare(b.cod_item);
+        case "codigo-desc":
+          return b.cod_item.localeCompare(a.cod_item);
+        case "descricao-asc":
+          return (a.descr_item || "").localeCompare(b.descr_item || "");
+        case "descricao-desc":
+          return (b.descr_item || "").localeCompare(a.descr_item || "");
+        case "saldo-asc":
+          return a.estoque_final - b.estoque_final;
+        case "saldo-desc":
+          return b.estoque_final - a.estoque_final;
+        case "status":
+          // Primeiro os não resolvidos, depois os resolvidos
+          if (resolvidoA !== resolvidoB) {
+            return resolvidoA ? 1 : -1;
+          }
+          return a.estoque_final - b.estoque_final;
+        default:
+          return 0;
+      }
+    });
+
+    return filtered;
+  };
+
+  const filteredPositivos = getFilteredAndSortedPositivos();
+  const filteredNegativos = getFilteredAndSortedNegativos();
+
+  // Quando um negativo é selecionado, destacar positivos que já foram usados para ele
+  const getPositivosUsadosParaNegativo = (codNegativo: string) => {
+    return adjustments
+      .filter((adj) => adj.cod_negativo === codNegativo)
+      .map((adj) => adj.cod_positivo);
+  };
+
+  // Quando um negativo é selecionado, sugerir busca automática
+  useEffect(() => {
+    if (selectedNegativo && selectedNegativoItem) {
+      // Tentar encontrar sugestões baseadas no código ou descrição
+      const codNegativo = selectedNegativoItem.cod_item;
+      const descrNegativo = (selectedNegativoItem.descr_item || "").toLowerCase();
+      
+      // Se não há busca ativa, tentar sugerir automaticamente
+      if (!searchPositivos.trim()) {
+        // Extrair prefixo do código (primeiros 3-4 caracteres)
+        const prefixo = codNegativo.substring(0, Math.min(4, codNegativo.length));
+        if (prefixo.length >= 2) {
+          setSearchPositivos(prefixo);
+        } else if (descrNegativo.length > 0) {
+          // Tentar usar primeiras palavras da descrição
+          const primeiraPalavra = descrNegativo.split(" ")[0];
+          if (primeiraPalavra.length >= 3) {
+            setSearchPositivos(primeiraPalavra);
+          }
+        }
+      }
+    }
+  }, [selectedNegativo, selectedNegativoItem]);
 
   if (loading) {
     return (
@@ -243,24 +492,52 @@ export default function AdjustmentsTable({
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Código Positivo *
             </label>
-            <select
-              value={selectedPositivo || ""}
-              onChange={(e) => setSelectedPositivo(e.target.value || null)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">Selecione um código positivo...</option>
-              {positivos.map((item) => (
-                <option key={item.cod_item} value={item.cod_item}>
-                  {item.cod_item} - {item.descr_item || "[Sem descrição]"} (
-                  Estoque: {item.estoque_final.toFixed(2)}, Custo: R${" "}
-                  {item.unit_cost.toFixed(2)})
-                </option>
-              ))}
-            </select>
+            <div className="space-y-2">
+              <input
+                type="text"
+                placeholder="Buscar positivo por código ou descrição..."
+                value={searchPositivos}
+                onChange={(e) => setSearchPositivos(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+              <select
+                value={selectedPositivo || ""}
+                onChange={(e) => setSelectedPositivo(e.target.value || null)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                size={Math.min(filteredPositivos.length + 1, 8)}
+              >
+                <option value="">Selecione um código positivo...</option>
+                {filteredPositivos.map((item) => {
+                  const ajustesFornecidos = adjustments
+                    .filter((adj) => adj.cod_positivo === item.cod_item)
+                    .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
+                  const disponivel = item.estoque_final - ajustesFornecidos;
+                  return (
+                    <option key={item.cod_item} value={item.cod_item}>
+                      {item.cod_item} - {item.descr_item || "[Sem descrição]"} | 
+                      Disponível: {disponivel.toFixed(2)} | 
+                      Custo: R$ {item.unit_cost.toFixed(2)}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
             {selectedPositivoItem && (
-              <p className="mt-1 text-xs text-gray-500">
-                Disponível: {selectedPositivoItem.estoque_final.toFixed(2)} | Custo
-                unitário: R$ {selectedPositivoItem.unit_cost.toFixed(2)}
+              <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
+                <p className="text-gray-700">
+                  <strong>Disponível:</strong> {(() => {
+                    const ajustesFornecidos = adjustments
+                      .filter((adj) => adj.cod_positivo === selectedPositivoItem.cod_item)
+                      .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
+                    return (selectedPositivoItem.estoque_final - ajustesFornecidos).toFixed(2);
+                  })()} | 
+                  <strong> Custo unitário:</strong> R$ {selectedPositivoItem.unit_cost.toFixed(2)}
+                </p>
+              </div>
+            )}
+            {searchPositivos && filteredPositivos.length === 0 && (
+              <p className="mt-1 text-xs text-red-600">
+                Nenhum item encontrado com a busca "{searchPositivos}"
               </p>
             )}
           </div>
@@ -300,85 +577,520 @@ export default function AdjustmentsTable({
         </div>
       </div>
 
-      {/* Tabela de itens negativos */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-6 py-4 bg-red-50 border-b border-red-200">
-          <h2 className="text-lg font-semibold text-red-900">
-            Itens com Saldo Negativo ({negativos.length})
-          </h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Código
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Descrição
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Estoque Final
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Ajustes Recebidos
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {negativos.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                    Nenhum item com saldo negativo encontrado.
-                  </td>
-                </tr>
-              ) : (
-                negativos.map((item) => {
-                  const ajustesRecebidos = adjustments
-                    .filter((adj) => adj.cod_negativo === item.cod_item)
-                    .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
-                  const saldoAposAjustes = item.estoque_final + ajustesRecebidos;
-                  const resolvido = saldoAposAjustes >= 0;
+      {/* Layout em duas colunas: Negativos e Positivos lado a lado */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Coluna 1: Itens Negativos com detalhes dos positivos usados */}
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-red-50 border-b border-red-200">
+            <h2 className="text-lg font-semibold text-red-900">
+              Itens com Saldo Negativo ({negativos.length})
+            </h2>
+            <p className="text-sm text-red-700 mt-1">
+              Selecione um item negativo e encontre o positivo equivalente
+            </p>
+          </div>
+          
+          {/* Filtros para negativos */}
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 space-y-2">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Buscar por código ou descrição..."
+                value={searchNegativos}
+                onChange={(e) => setSearchNegativos(e.target.value)}
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              />
+              <select
+                value={sortNegativos}
+                onChange={(e) => setSortNegativos(e.target.value as any)}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              >
+                <option value="saldo-asc">Saldo: Menor → Maior</option>
+                <option value="saldo-desc">Saldo: Maior → Menor</option>
+                <option value="codigo-asc">Código: A-Z</option>
+                <option value="codigo-desc">Código: Z-A</option>
+                <option value="descricao-asc">Descrição: A-Z</option>
+                <option value="descricao-desc">Descrição: Z-A</option>
+                <option value="status">Status: Pendentes primeiro</option>
+              </select>
+            </div>
+            {searchNegativos && (
+              <p className="text-xs text-gray-600">
+                {filteredNegativos.length} item(ns) encontrado(s)
+              </p>
+            )}
+          </div>
 
-                  return (
-                    <tr
-                      key={item.cod_item}
-                      className={resolvido ? "bg-green-50" : ""}
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {item.cod_item}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {item.descr_item || "[Sem descrição]"}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                        {item.estoque_final.toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600">
-                        +{ajustesRecebidos.toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        {resolvido ? (
-                          <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                            Resolvido
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Código
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Descrição
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Saldo Atual
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Recebido
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredNegativos.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                      {searchNegativos ? "Nenhum item encontrado com a busca." : "Nenhum item com saldo negativo encontrado."}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredNegativos.map((item) => {
+                    const ajustesParaEsteNegativo = adjustments.filter(
+                      (adj) => adj.cod_negativo === item.cod_item
+                    );
+                    const ajustesRecebidos = ajustesParaEsteNegativo.reduce(
+                      (acc, adj) => acc + Number(adj.qtd_baixada),
+                      0
+                    );
+                    const saldoAposAjustes = item.estoque_final + ajustesRecebidos;
+                    const resolvido = saldoAposAjustes >= 0;
+                    const aindaPrecisa = Math.abs(Math.min(0, saldoAposAjustes));
+
+                    const isSelected = selectedNegativo === item.cod_item;
+                    return (
+                      <tr
+                        key={item.cod_item}
+                        onClick={() => setSelectedNegativo(item.cod_item)}
+                        className={`${resolvido ? "bg-green-50" : "hover:bg-red-50"} ${isSelected ? "ring-2 ring-red-500 bg-red-100" : ""} transition-colors cursor-pointer`}
+                      >
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {item.cod_item}
+                          {isSelected && <span className="ml-2 text-red-600">✓</span>}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate" title={item.descr_item || "[Sem descrição]"}>
+                          {item.descr_item || "[Sem descrição]"}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
+                          <span className={`font-bold ${item.estoque_final < 0 ? "text-red-600" : "text-gray-900"}`}>
+                            {item.estoque_final.toFixed(2)}
                           </span>
-                        ) : (
-                          <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
-                            Pendente
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
+                          {ajustesRecebidos > 0 ? (
+                            <span className="font-medium text-green-600">
+                              +{ajustesRecebidos.toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-center">
+                          {resolvido ? (
+                            <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                              ✓ Resolvido
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
+                              Precisa {aindaPrecisa.toFixed(2)}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Coluna 2: Itens Positivos com detalhes de quanto já foi usado */}
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-green-50 border-b border-green-200">
+            <h2 className="text-lg font-semibold text-green-900">
+              Itens com Saldo Positivo ({positivos.length})
+            </h2>
+            <p className="text-sm text-green-700 mt-1">
+              {selectedNegativo 
+                ? `Encontre o positivo equivalente para: ${selectedNegativoItem?.cod_item || selectedNegativo}`
+                : "Selecione um negativo à esquerda para ver sugestões"}
+            </p>
+          </div>
+          
+          {/* Filtros para positivos */}
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 space-y-2">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Buscar por código, descrição ou prefixo..."
+                value={searchPositivos}
+                onChange={(e) => setSearchPositivos(e.target.value)}
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              />
+              <select
+                value={sortPositivos}
+                onChange={(e) => setSortPositivos(e.target.value as any)}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+              >
+                <option value="quantidade-desc">Maior Quantidade</option>
+                <option value="quantidade-asc">Menor Quantidade</option>
+                <option value="disponivel-desc">Mais Disponível</option>
+                <option value="disponivel-asc">Menos Disponível</option>
+                <option value="codigo-asc">Código: A-Z</option>
+                <option value="codigo-desc">Código: Z-A</option>
+                <option value="descricao-asc">Descrição: A-Z</option>
+                <option value="descricao-desc">Descrição: Z-A</option>
+                <option value="usado-desc">Mais Usado</option>
+                <option value="usado-asc">Menos Usado</option>
+              </select>
+            </div>
+            {searchPositivos && (
+              <p className="text-xs text-gray-600">
+                {filteredPositivos.length} item(ns) encontrado(s)
+              </p>
+            )}
+            {selectedNegativo && (
+              <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                💡 <strong>Dica:</strong> Procure por códigos similares ou descrições parecidas ao negativo selecionado
+              </div>
+            )}
+          </div>
+
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Código
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Descrição
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Estoque Final
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Já Usado
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Disponível
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredPositivos.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                      {searchPositivos ? "Nenhum item encontrado com a busca." : "Nenhum item com saldo positivo encontrado."}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredPositivos.map((item) => {
+                    const ajustesFornecidos = adjustments
+                      .filter((adj) => adj.cod_positivo === item.cod_item)
+                      .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
+                    const disponivel = item.estoque_final - ajustesFornecidos;
+                    const percentualUsado = item.estoque_final > 0 
+                      ? (ajustesFornecidos / item.estoque_final) * 100 
+                      : 0;
+                    
+                    // Verificar se este positivo já foi usado para o negativo selecionado
+                    const positivosUsados = selectedNegativo 
+                      ? getPositivosUsadosParaNegativo(selectedNegativo)
+                      : [];
+                    const jaFoiUsadoParaEsteNegativo = selectedNegativo 
+                      ? positivosUsados.includes(item.cod_item)
+                      : false;
+                    
+                    // Verificar similaridade com o negativo selecionado (para destacar sugestões)
+                    const isSimilar = selectedNegativo && selectedNegativoItem
+                      ? item.cod_item.includes(selectedNegativoItem.cod_item.substring(0, 3)) ||
+                        selectedNegativoItem.cod_item.includes(item.cod_item.substring(0, 3)) ||
+                        (item.descr_item && selectedNegativoItem.descr_item && 
+                         item.descr_item.toLowerCase().includes(selectedNegativoItem.descr_item.toLowerCase().substring(0, 5)))
+                      : false;
+
+                    return (
+                      <tr
+                        key={item.cod_item}
+                        onClick={() => setSelectedPositivo(item.cod_item)}
+                        className={`${ajustesFornecidos > 0 ? "bg-blue-50" : ""} ${selectedPositivo === item.cod_item ? "ring-2 ring-green-500 bg-green-100" : ""} ${jaFoiUsadoParaEsteNegativo ? "bg-yellow-50 border-l-4 border-yellow-400" : ""} ${isSimilar && selectedNegativo ? "bg-purple-50 border-l-4 border-purple-400" : ""} hover:bg-green-50 transition-colors cursor-pointer`}
+                      >
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {item.cod_item}
+                          {selectedPositivo === item.cod_item && <span className="ml-2 text-green-600">✓</span>}
+                          {jaFoiUsadoParaEsteNegativo && selectedNegativo && (
+                            <span className="ml-2 text-xs text-yellow-600" title="Já usado para este negativo">🔄</span>
+                          )}
+                          {isSimilar && selectedNegativo && !jaFoiUsadoParaEsteNegativo && (
+                            <span className="ml-2 text-xs text-purple-600" title="Possível correspondência">💡</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate" title={item.descr_item || "[Sem descrição]"}>
+                          {item.descr_item || "[Sem descrição]"}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
+                          <span className="font-bold text-green-700">
+                            {item.estoque_final.toFixed(2)}
                           </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
+                          {ajustesFornecidos > 0 ? (
+                            <div className="flex flex-col items-end">
+                              <span className="font-medium text-orange-600">
+                                -{ajustesFornecidos.toFixed(2)}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                ({percentualUsado.toFixed(1)}%)
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
+                          <span className={`font-bold ${disponivel > 0 ? "text-green-700" : "text-red-600"}`}>
+                            {disponivel.toFixed(2)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
+
+      {/* Mapa de correspondências: Mostra visualmente quais positivos cobrem quais negativos */}
+      {adjustments.length > 0 && (
+        <div className="bg-white border-2 border-blue-200 rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-blue-50 border-b border-blue-200">
+            <h2 className="text-lg font-semibold text-blue-900">
+              📊 Mapa de Correspondências
+            </h2>
+            <p className="text-sm text-blue-700 mt-1">
+              Visualize quais itens positivos estão sendo usados para cobrir quais negativos
+            </p>
+          </div>
+          <div className="p-6">
+            {/* Visão por Negativo: Mostra quais positivos cobrem cada negativo */}
+            <div className="mb-6">
+              <h3 className="text-sm font-bold text-gray-700 mb-3">
+                📉 Visão por Item Negativo (o que precisa ser coberto)
+              </h3>
+              <div className="space-y-4">
+                {negativos
+                  .filter((negativo) => {
+                    const ajustesParaEsteNegativo = adjustments.filter(
+                      (adj) => adj.cod_negativo === negativo.cod_item
+                    );
+                    return ajustesParaEsteNegativo.length > 0;
+                  })
+                  .map((negativo) => {
+                    const ajustesParaEsteNegativo = adjustments.filter(
+                      (adj) => adj.cod_negativo === negativo.cod_item
+                    );
+
+                    const totalRecebido = ajustesParaEsteNegativo.reduce(
+                      (acc, adj) => acc + Number(adj.qtd_baixada),
+                      0
+                    );
+                    const saldoAposAjustes = negativo.estoque_final + totalRecebido;
+                    const resolvido = saldoAposAjustes >= 0;
+                    const aindaPrecisa = Math.abs(Math.min(0, saldoAposAjustes));
+
+                    return (
+                      <div
+                        key={negativo.cod_item}
+                        className={`border-2 rounded-lg p-4 ${resolvido ? "border-green-300 bg-green-50" : "border-red-300 bg-red-50"}`}
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-bold text-red-700">
+                                {negativo.cod_item}
+                              </span>
+                              <span className="text-xs text-gray-600">
+                                {negativo.descr_item || "[Sem descrição]"}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600 mt-2">
+                              <span>
+                                Saldo inicial: <strong className="text-red-600">{negativo.estoque_final.toFixed(2)}</strong>
+                              </span>
+                              <span>
+                                Total recebido: <strong className="text-green-600">+{totalRecebido.toFixed(2)}</strong>
+                              </span>
+                              <span>
+                                Saldo após: <strong className={resolvido ? "text-green-600" : "text-red-600"}>
+                                  {saldoAposAjustes.toFixed(2)}
+                                </strong>
+                              </span>
+                              {!resolvido && (
+                                <span className="text-red-700 font-medium">
+                                  ⚠️ Ainda precisa: {aindaPrecisa.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {resolvido ? (
+                            <span className="px-2 py-1 text-xs font-medium bg-green-200 text-green-800 rounded-full whitespace-nowrap">
+                              ✓ Resolvido
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 text-xs font-medium bg-red-200 text-red-800 rounded-full whitespace-nowrap">
+                              Pendente
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          <div className="text-xs font-medium text-gray-700 mb-2">
+                            Coberto por {ajustesParaEsteNegativo.length} item(ns) positivo(s):
+                          </div>
+                          {ajustesParaEsteNegativo.map((adj) => {
+                            const positivoItem = positivos.find(
+                              (p) => p.cod_item === adj.cod_positivo
+                            );
+                            return (
+                              <div
+                                key={adj.id}
+                                className="flex items-center justify-between bg-white border border-gray-200 rounded p-2 hover:border-green-300 transition-colors"
+                              >
+                                <div className="flex items-center gap-3 flex-1">
+                                  <span className="text-sm font-bold text-green-700 bg-green-100 px-2 py-1 rounded">
+                                    {adj.cod_positivo}
+                                  </span>
+                                  <span className="text-xs text-gray-600 truncate">
+                                    {positivoItem?.descr_item || "[Sem descrição]"}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-4 text-xs whitespace-nowrap ml-2">
+                                  <span className="text-gray-600">
+                                    Qtd: <strong className="text-blue-700">{Number(adj.qtd_baixada).toFixed(2)}</strong>
+                                  </span>
+                                  <span className="text-gray-600">
+                                    Valor: <strong className="text-gray-900">R$ {Number(adj.total_value).toFixed(2)}</strong>
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* Visão por Positivo: Mostra para quais negativos cada positivo está sendo usado */}
+            <div>
+              <h3 className="text-sm font-bold text-gray-700 mb-3">
+                📈 Visão por Item Positivo (o que está sendo usado)
+              </h3>
+              <div className="space-y-4">
+                {positivos
+                  .filter((positivo) => {
+                    const ajustesDestePositivo = adjustments.filter(
+                      (adj) => adj.cod_positivo === positivo.cod_item
+                    );
+                    return ajustesDestePositivo.length > 0;
+                  })
+                  .map((positivo) => {
+                    const ajustesDestePositivo = adjustments.filter(
+                      (adj) => adj.cod_positivo === positivo.cod_item
+                    );
+                    const totalFornecido = ajustesDestePositivo.reduce(
+                      (acc, adj) => acc + Number(adj.qtd_baixada),
+                      0
+                    );
+                    const disponivel = positivo.estoque_final - totalFornecido;
+                    const percentualUsado = positivo.estoque_final > 0 
+                      ? (totalFornecido / positivo.estoque_final) * 100 
+                      : 0;
+
+                    return (
+                      <div
+                        key={positivo.cod_item}
+                        className="border-2 border-green-300 bg-green-50 rounded-lg p-4"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-bold text-green-700">
+                                {positivo.cod_item}
+                              </span>
+                              <span className="text-xs text-gray-600">
+                                {positivo.descr_item || "[Sem descrição]"}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600 mt-2">
+                              <span>
+                                Estoque total: <strong className="text-green-700">{positivo.estoque_final.toFixed(2)}</strong>
+                              </span>
+                              <span>
+                                Já usado: <strong className="text-orange-600">-{totalFornecido.toFixed(2)}</strong>
+                                <span className="text-gray-500 ml-1">({percentualUsado.toFixed(1)}%)</span>
+                              </span>
+                              <span>
+                                Disponível: <strong className={disponivel > 0 ? "text-green-700" : "text-red-600"}>
+                                  {disponivel.toFixed(2)}
+                                </strong>
+                              </span>
+                            </div>
+                          </div>
+                          <span className="px-2 py-1 text-xs font-medium bg-green-200 text-green-800 rounded-full whitespace-nowrap">
+                            {ajustesDestePositivo.length} uso(s)
+                          </span>
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          <div className="text-xs font-medium text-gray-700 mb-2">
+                            Usado para cobrir {ajustesDestePositivo.length} item(ns) negativo(s):
+                          </div>
+                          {ajustesDestePositivo.map((adj) => {
+                            const negativoItem = negativos.find(
+                              (n) => n.cod_item === adj.cod_negativo
+                            );
+                            return (
+                              <div
+                                key={adj.id}
+                                className="flex items-center justify-between bg-white border border-gray-200 rounded p-2 hover:border-red-300 transition-colors"
+                              >
+                                <div className="flex items-center gap-3 flex-1">
+                                  <span className="text-sm font-bold text-red-700 bg-red-100 px-2 py-1 rounded">
+                                    {adj.cod_negativo}
+                                  </span>
+                                  <span className="text-xs text-gray-600 truncate">
+                                    {negativoItem?.descr_item || "[Sem descrição]"}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-4 text-xs whitespace-nowrap ml-2">
+                                  <span className="text-gray-600">
+                                    Qtd: <strong className="text-blue-700">{Number(adj.qtd_baixada).toFixed(2)}</strong>
+                                  </span>
+                                  <span className="text-gray-600">
+                                    Valor: <strong className="text-gray-900">R$ {Number(adj.total_value).toFixed(2)}</strong>
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabela de ajustes realizados - DESTACADA */}
       {adjustments.length === 0 ? (
@@ -394,12 +1106,31 @@ export default function AdjustmentsTable({
       ) : (
         <div className="bg-white border-2 border-blue-300 rounded-lg overflow-hidden shadow-lg">
           <div className="px-6 py-4 bg-gradient-to-r from-blue-500 to-blue-600 border-b border-blue-200">
-            <h2 className="text-xl font-bold text-white">
-              📋 Ajustes Realizados e Salvos ({adjustments.length})
-            </h2>
-            <p className="text-sm text-blue-100 mt-1">
-              Todos os ajustes estão salvos no banco de dados e persistem mesmo após fechar a aba ou mudar de mês
-            </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white">
+                  📋 Ajustes Realizados e Salvos ({adjustments.length})
+                </h2>
+                <p className="text-sm text-blue-100 mt-1">
+                  Todos os ajustes estão salvos no banco de dados e persistem mesmo após fechar a aba ou mudar de mês
+                </p>
+              </div>
+              <button
+                onClick={async () => {
+                  console.log("[AdjustmentsTable] Botão Atualizar clicado");
+                  await loadAdjustments();
+                  await loadInventoryData();
+                  // Se houver função de refresh do componente pai, chamá-la também
+                  if (onRefresh) {
+                    onRefresh();
+                  }
+                }}
+                className="px-4 py-2 bg-white text-blue-600 rounded-md hover:bg-blue-50 font-medium text-sm transition-colors shadow-sm"
+                title="Atualizar lista de ajustes e dados do inventário"
+              >
+                🔄 Atualizar
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">

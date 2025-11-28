@@ -16,3 +16,4 @@ export interface ConsolidadoPorCodigo extends ConsolidatedRow {
   valor_saidas: number;
 }
 
+

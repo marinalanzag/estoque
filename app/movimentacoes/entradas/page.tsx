@@ -2,6 +2,7 @@ import EntriesTable from "@/components/entries/EntriesTable";
 import RefreshOnMount from "@/components/entries/RefreshOnMount";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 import { buildEntradasItems } from "@/lib/entradas";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -193,17 +194,19 @@ export default async function MovEntradasPage({
 }: MovEntradasPageProps) {
   const supabaseAdmin = getSupabaseAdmin();
 
-  // Buscar período ativo
-  const { data: activePeriod } = await supabaseAdmin
-    .from("periods")
-    .select("id")
-    .eq("is_active", true)
-    .single();
+  // Buscar período ativo usando helper
+  const { getActivePeriodFromRequest, getBaseSpedFileForPeriod } = await import("@/lib/periods");
+  // Criar URLSearchParams a partir do searchParams para compatibilidade
+  const urlParams = new URLSearchParams();
+  if (searchParams?.fileId) {
+    urlParams.set("fileId", searchParams.fileId);
+  }
+  const activePeriod = await getActivePeriodFromRequest(urlParams);
 
   // Buscar arquivos SPED do período ativo (ou todos se não houver período ativo)
   const spedQuery = supabaseAdmin
     .from("sped_files")
-    .select("id, name, uploaded_at")
+    .select("id, name, uploaded_at, is_base")
     .order("uploaded_at", { ascending: false });
 
   if (activePeriod) {
@@ -229,7 +232,55 @@ export default async function MovEntradasPage({
     );
   }
 
-  const selectedFileId = searchParams?.fileId ?? spedFiles[0].id;
+  // IMPORTANTE: Se houver período ativo, SEMPRE usar o SPED base, ignorando qualquer seleção manual
+  let selectedFileId: string | null = null;
+  
+  if (activePeriod) {
+    const baseSpedId = await getBaseSpedFileForPeriod(activePeriod.id);
+    if (baseSpedId) {
+      selectedFileId = baseSpedId;
+      console.log("[entradas/page] Usando SPED base do período:", baseSpedId);
+    } else {
+      // Se não há base, mostrar aviso
+      return (
+        <div className="max-w-6xl mx-auto p-6 space-y-4">
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Entradas fiscais
+          </h1>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <p className="text-yellow-800 font-medium mb-2">
+              ⚠️ Nenhum SPED base configurado para este período
+            </p>
+            <p className="text-yellow-700 text-sm mb-3">
+              Configure o SPED base na página de configuração do período.
+            </p>
+            <Link
+              href="/periodos/configuracao"
+              className="inline-block px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 text-sm font-medium"
+            >
+              Configurar período
+            </Link>
+          </div>
+        </div>
+      );
+    }
+  } else {
+    // Se não há período ativo, usar o primeiro SPED disponível (compatibilidade)
+    selectedFileId = spedFiles[0]?.id ?? null;
+  }
+  
+  if (!selectedFileId) {
+    return (
+      <div className="max-w-6xl mx-auto p-6 space-y-4">
+        <h1 className="text-2xl font-semibold text-gray-900">
+          Entradas fiscais
+        </h1>
+        <p className="text-gray-600">
+          Nenhum arquivo SPED foi importado ainda.
+        </p>
+      </div>
+    );
+  }
   const activePeriodId = activePeriod?.id ?? null;
   
   // Debug: verificar qual SPED está sendo usado
@@ -240,8 +291,9 @@ export default async function MovEntradasPage({
   // Usar a função compartilhada para construir entries (mesma lógica usada na consolidação)
   const entries = await buildEntradasItems(
     supabaseAdmin,
-    selectedFileId,
-    "ENTRADAS"
+    selectedFileId!,
+    "ENTRADAS",
+    activePeriodId
   );
   
   
@@ -429,40 +481,60 @@ export default async function MovEntradasPage({
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <form className="flex items-end gap-4">
-          <div className="flex-1">
-            <label
-              htmlFor="fileId"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Arquivo SPED
-            </label>
-            <select
-              id="fileId"
-              name="fileId"
-              defaultValue={selectedFileId}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
-            >
-              {spedFiles.map((file) => (
-                <option key={file.id} value={file.id}>
-                  {file.name} (
-                    {new Date(file.uploaded_at).toLocaleDateString("pt-BR")}
-                  )
-                </option>
-              ))}
-            </select>
+      {activePeriod && selectedFileId ? (
+        // Quando há período ativo e base definida, mostrar apenas informações
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span className="font-medium">Período ativo:</span>
+              <span>{activePeriod.label || `${activePeriod.month}/${activePeriod.year}`}</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span className="font-medium">SPED base:</span>
+              <span>{spedFiles.find(f => f.id === selectedFileId)?.name || "Não encontrado"}</span>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Para alterar a base, acesse a página de importação/configuração.
+            </p>
           </div>
-          <button
-            type="submit"
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
-          >
-            Aplicar
-          </button>
-        </form>
-      </div>
+        </div>
+      ) : (
+        // Quando não há base, mostrar formulário de seleção
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <form className="flex items-end gap-4">
+            <div className="flex-1">
+              <label
+                htmlFor="fileId"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Arquivo SPED
+              </label>
+              <select
+                id="fileId"
+                name="fileId"
+                defaultValue={selectedFileId ?? undefined}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+              >
+                {spedFiles.map((file) => (
+                  <option key={file.id} value={file.id}>
+                    {file.name} (
+                      {new Date(file.uploaded_at).toLocaleDateString("pt-BR")}
+                    )
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
+            >
+              Aplicar
+            </button>
+          </form>
+        </div>
+      )}
 
-      <EntriesTable entries={entries} />
+      <EntriesTable entries={entries} selectedSpedFileId={selectedFileId ?? undefined} />
     </div>
   );
 }

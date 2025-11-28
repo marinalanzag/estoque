@@ -15,12 +15,34 @@ export async function GET(req: NextRequest) {
       .order("month", { ascending: false });
 
     if (error) {
+      console.error("Erro ao buscar períodos do banco:", error);
       throw new Error(`Erro ao buscar períodos: ${error.message}`);
+    }
+
+    const periodsList = periods || [];
+    console.log(`[periods/list] Retornando ${periodsList.length} períodos`);
+    
+    // Log detalhado dos períodos retornados
+    if (periodsList.length > 0) {
+      console.log(`[periods/list] Períodos:`, periodsList.map(p => ({
+        id: p.id,
+        year: p.year,
+        month: p.month,
+        name: p.name,
+        label: p.label,
+        is_active: p.is_active,
+      })));
     }
 
     return NextResponse.json({
       ok: true,
-      periods: periods || [],
+      periods: periodsList,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
     });
   } catch (error) {
     console.error("Erro ao listar períodos:", error);

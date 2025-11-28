@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import PeriodSelector from "@/components/periods/PeriodSelector";
@@ -27,67 +28,22 @@ export default function AppLayoutClient({
           </h1>
           <nav className="space-y-1">
             <Link
-              href="/"
+              href="/periodos/configuracao"
               className={`block px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                isActive("/")
+                isActive("/periodos/configuracao")
                   ? "bg-blue-50 text-blue-700"
                   : "text-gray-700 hover:bg-gray-50"
               }`}
             >
-              Dashboard
+              Configuração do Período
             </Link>
-            <div className="pt-4">
-              <p className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Importações
-              </p>
-              <Link
-                href="/stock-initial/upload"
-                className={`block px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  isActive("/stock-initial")
-                    ? "bg-blue-50 text-blue-700"
-                    : "text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                Estoque inicial
-              </Link>
-              <Link
-                href="/sped/upload"
-                className={`block px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  isActive("/sped/upload")
-                    ? "bg-blue-50 text-blue-700"
-                    : "text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                SPED
-              </Link>
-              <Link
-                href="/sped/upload-xml-sales"
-                className={`block px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  isActive("/sped/upload-xml-sales")
-                    ? "bg-blue-50 text-blue-700"
-                    : "text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                XMLs de vendas
-              </Link>
-              <Link
-                href="/cadastro-produtos/upload"
-                className={`block px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  isActive("/cadastro-produtos")
-                    ? "bg-blue-50 text-blue-700"
-                    : "text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                Cadastro de Produtos
-              </Link>
-            </div>
-          <div className="pt-6">
+          <div className="pt-6 space-y-1">
             <p className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
               Movimentações
             </p>
             <Link
               href="/movimentacoes/entradas"
-              className={`block px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`block w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 isActive("/movimentacoes/entradas")
                   ? "bg-blue-50 text-blue-700"
                   : "text-gray-700 hover:bg-gray-50"
@@ -97,7 +53,7 @@ export default function AppLayoutClient({
             </Link>
             <Link
               href="/movimentacoes/saidas"
-              className={`block px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`block w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 isActive("/movimentacoes/saidas")
                   ? "bg-blue-50 text-blue-700"
                   : "text-gray-700 hover:bg-gray-50"
@@ -107,7 +63,7 @@ export default function AppLayoutClient({
             </Link>
             <Link
               href="/movimentacoes/consolidado"
-              className={`block px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`block w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 isActive("/movimentacoes/consolidado")
                   ? "bg-blue-50 text-blue-700"
                   : "text-gray-700 hover:bg-gray-50"
@@ -116,13 +72,13 @@ export default function AppLayoutClient({
               Consolidação
             </Link>
           </div>
-          <div className="pt-6">
+          <div className="pt-6 space-y-1">
             <p className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
               Ajustes
             </p>
             <Link
               href="/ajustes"
-              className={`block px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`block w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 isActive("/ajustes")
                   ? "bg-blue-50 text-blue-700"
                   : "text-gray-700 hover:bg-gray-50"
@@ -132,7 +88,7 @@ export default function AppLayoutClient({
             </Link>
             <Link
               href="/ajustes/relatorio"
-              className={`block px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`block w-full px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 isActive("/ajustes/relatorio")
                   ? "bg-blue-50 text-blue-700"
                   : "text-gray-700 hover:bg-gray-50"
@@ -163,7 +119,15 @@ export default function AppLayoutClient({
       {/* Main content */}
       <div className="flex-1 ml-64">
         <main className="max-w-6xl mx-auto p-6">
-          <PeriodSelector />
+          <Suspense 
+            fallback={
+              <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-gray-600">Carregando períodos...</p>
+              </div>
+            }
+          >
+            <PeriodSelector />
+          </Suspense>
           {children}
         </main>
       </div>

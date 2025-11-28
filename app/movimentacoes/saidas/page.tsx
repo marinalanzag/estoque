@@ -3,6 +3,11 @@ import { normalizeCodItem, fetchProductDescriptions } from "@/lib/utils";
 import ExitsTable from "@/components/movements/ExitsTable";
 import SaidasFilter from "@/components/movements/SaidasFilter";
 import { cookies } from "next/headers";
+import {
+  getActivePeriodFromRequest,
+  getBaseXmlImportsForPeriod,
+} from "@/lib/periods";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -47,12 +52,8 @@ export default async function MovimentacoesSaidasPage({
     ? cookieImportIdsRaw.split(",").filter(Boolean)
     : [];
 
-  // Buscar período ativo
-  const { data: activePeriod } = await supabaseAdmin
-    .from("periods")
-    .select("id")
-    .eq("is_active", true)
-    .single();
+  // Buscar período ativo usando helper
+  const activePeriod = await getActivePeriodFromRequest();
 
   // Buscar arquivos SPED do período ativo (ou todos se não houver período ativo)
   const spedQuery = supabaseAdmin
@@ -188,6 +189,12 @@ export default async function MovimentacoesSaidasPage({
     console.error(`[saidas/page] Erro ao buscar grupos de importações:`, error);
   }
 
+  // Se houver período ativo, usar XMLs base
+  let baseXmlImportIds: string[] = [];
+  if (activePeriod) {
+    baseXmlImportIds = await getBaseXmlImportsForPeriod(activePeriod.id);
+  }
+
   // Suportar seleção por grupo (groupKey) ou por importIds individuais
   const requestedGroupKey = searchParams?.groupKey as string | undefined;
   const requestedImportIds = searchParams?.importId
@@ -207,7 +214,13 @@ export default async function MovimentacoesSaidasPage({
 
   let selectedImportIds: string[] | null = null;
 
-  if (selectedGroupKey) {
+  // Priorizar XMLs base quando houver período ativo
+  if (baseXmlImportIds.length > 0 && !requestedGroupKey && !requestedImportIds) {
+    selectedImportIds = baseXmlImportIds;
+    console.log(
+      `[saidas/page] Usando XMLs base do período: ${selectedImportIds.length} imports`
+    );
+  } else if (selectedGroupKey) {
     const selectedGroup = groupedXmlImports.find(
       (group) => group.key === selectedGroupKey
     );
@@ -438,6 +451,7 @@ export default async function MovimentacoesSaidasPage({
           selectedGroupKey={selectedGroupKey}
           selectedImportIds={selectedImportIds}
           activePeriod={activePeriod}
+          hasBase={baseXmlImportIds.length > 0}
         />
 
       {/* Cards de resumo */}

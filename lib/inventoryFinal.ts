@@ -34,10 +34,41 @@ export async function getInventoryFinalData(
   periodId?: string | null,
   options?: InventoryFinalOptions
 ): Promise<{ items: InventoryFinalItem[]; summary: InventoryFinalSummary }> {
+  // CRÍTICO: O Inventário Final DEVE usar exatamente os mesmos dados da Consolidação
+  // Não pode haver filtros ou exclusões baseados em estoque inicial
   const consolidado = await buildConsolidado(periodId ?? null, spedFileId, {
     xmlImportIds: options?.xmlImportIds ?? null,
   });
 
+  // DEBUG: Verificar se o código 002064 está no consolidado
+  const debugCode = "002064";
+  console.log(`[INV-FINAL DEBUG] Total de rows no consolidado: ${consolidado.rows.length}`);
+  const row2064 = consolidado.rows.find(r => r.cod_item === debugCode);
+  if (row2064) {
+    console.log(`[INV-FINAL DEBUG] ✅ Item ${debugCode} encontrado no consolidado:`, {
+      cod_item: row2064.cod_item,
+      descr_item: row2064.descr_item,
+      qtd_inicial: row2064.qtd_inicial,
+      entradas: row2064.entradas,
+      saidas: row2064.saidas,
+      qtd_final: row2064.qtd_final,
+      custo_medio: row2064.custo_medio,
+      valor_total: row2064.valor_total,
+    });
+  } else {
+    console.error(`[INV-FINAL DEBUG] ❌ Item ${debugCode} NÃO encontrado no consolidado.rows!`);
+    console.error(`[INV-FINAL DEBUG] Códigos similares encontrados:`, 
+      consolidado.rows
+        .filter(r => r.cod_item.includes("2064") || r.cod_item.includes("002064"))
+        .map(r => ({ cod_item: r.cod_item, descr_item: r.descr_item }))
+    );
+    console.error(`[INV-FINAL DEBUG] Primeiros 20 códigos do consolidado:`, 
+      consolidado.rows.slice(0, 20).map(r => r.cod_item)
+    );
+  }
+
+  // IMPORTANTE: Mapear TODOS os rows do consolidado, sem filtros
+  // O consolidado já garante que todos os códigos com entradas/saídas/estoque estão incluídos
   const items: InventoryFinalItem[] = consolidado.rows.map((row) => {
     const recebidos = consolidado.ajustes.recebidos[row.cod_item] ?? 0;
     const baixas = consolidado.ajustes.baixasPositivas[row.cod_item] ?? 0;
@@ -45,6 +76,18 @@ export async function getInventoryFinalData(
     const estoqueFinal = estoqueTeorico - baixas;
     const unitCost = row.custo_medio ?? 0;
     const valorEstoqueFinal = unitCost * estoqueFinal;
+
+    // DEBUG específico para 002064
+    if (row.cod_item === debugCode) {
+      console.log(`[INV-FINAL DEBUG] Mapeando item ${debugCode}:`, {
+        recebidos,
+        baixas,
+        estoqueTeorico,
+        estoqueFinal,
+        unitCost,
+        valorEstoqueFinal,
+      });
+    }
 
     return {
       cod_item: row.cod_item,
@@ -62,6 +105,23 @@ export async function getInventoryFinalData(
       valor_estoque_final: valorEstoqueFinal,
     };
   });
+
+  // DEBUG: Verificar se o item 002064 está nos items finais
+  const item2064 = items.find(i => i.cod_item === debugCode);
+  if (item2064) {
+    console.log(`[INV-FINAL DEBUG] ✅ Item ${debugCode} encontrado nos items finais:`, {
+      cod_item: item2064.cod_item,
+      descr_item: item2064.descr_item,
+      estoque_inicial: item2064.estoque_inicial,
+      entradas: item2064.entradas,
+      saidas: item2064.saidas,
+      estoque_teorico: item2064.estoque_teorico,
+      estoque_final: item2064.estoque_final,
+    });
+  } else {
+    console.error(`[INV-FINAL DEBUG] ❌ Item ${debugCode} NÃO encontrado nos items finais!`);
+    console.error(`[INV-FINAL DEBUG] Total de items: ${items.length}`);
+  }
 
   const summary: InventoryFinalSummary = {
     total_itens: items.length,
