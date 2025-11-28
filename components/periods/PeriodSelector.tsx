@@ -24,6 +24,7 @@ function PeriodSelectorInner() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newPeriod, setNewPeriod] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, name: "" });
   const [creating, setCreating] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     loadPeriods();
@@ -38,24 +39,37 @@ function PeriodSelectorInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periods]);
 
+
   const loadPeriods = async () => {
     try {
       // Adicionar timestamp para evitar cache
-      const res = await fetch(`/api/periods/list?t=${Date.now()}`, {
+      const timestamp = Date.now();
+      const res = await fetch(`/api/periods/list?t=${timestamp}`, {
         cache: "no-store",
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
       });
       
       if (!res.ok) {
-        console.error("[PeriodSelector] Resposta não OK:", res.status, res.statusText);
+        console.error("[PeriodSelector] Erro ao carregar períodos:", res.status, res.statusText);
         setLoading(false);
-        return;
+        return [];
       }
       
       const data = await res.json();
       if (data.ok) {
         const periodsList = (data.periods || []) as Period[];
-        console.log(`[PeriodSelector] Carregados ${periodsList.length} períodos:`, periodsList.map((p: Period) => `${p.year}/${p.month} - ${p.name || p.label || 'sem nome'}`));
+        console.log(`[PeriodSelector] ✅ Carregados ${periodsList.length} períodos`);
+        
+        // SEMPRE atualizar a lista com os dados do servidor
         setPeriods(periodsList);
+        
+        // Forçar atualização do select após carregar períodos
+        setRefreshKey(prev => prev + 1);
+        
+        return periodsList; // Retornar para uso externo
       } else {
         console.error("[PeriodSelector] Erro ao carregar períodos:", data.error);
       }
@@ -64,6 +78,7 @@ function PeriodSelectorInner() {
     } finally {
       setLoading(false);
     }
+    return [];
   };
 
   const loadActivePeriod = async () => {
@@ -80,6 +95,7 @@ function PeriodSelectorInner() {
             const period = periods.find(p => p.year === year && p.month === month);
             if (period) {
               setActivePeriod(period);
+              setRefreshKey(prev => prev + 1);
               return;
             }
           }
@@ -93,16 +109,27 @@ function PeriodSelectorInner() {
       const data = await res.json();
       if (data.ok && data.period) {
         setActivePeriod(data.period);
-        // Garantir que o período está na lista
-        if (periods.length > 0) {
-          const exists = periods.find(p => p.id === data.period.id);
+        
+        // Sempre garantir que o período ativo está na lista
+        setPeriods(prev => {
+          const exists = prev.find(p => p.id === data.period.id);
           if (!exists) {
-            setPeriods(prev => [...prev, data.period].sort((a, b) => {
+            const newList = [data.period, ...prev].sort((a, b) => {
               if (b.year !== a.year) return b.year - a.year;
               return b.month - a.month;
-            }));
+            });
+            setRefreshKey(prev => prev + 1);
+            return newList;
           }
-        }
+          // Atualizar período existente se houver mudanças
+          const updated = prev.map(p => p.id === data.period.id ? data.period : p);
+          if (JSON.stringify(prev) !== JSON.stringify(updated)) {
+            setRefreshKey(prev => prev + 1);
+          }
+          return updated;
+        });
+      } else if (data.ok && !data.period) {
+        setActivePeriod(null);
       }
     } catch (err) {
       console.error("Erro ao carregar período ativo:", err);
@@ -119,6 +146,7 @@ function PeriodSelectorInner() {
       const data = await res.json();
       if (data.ok && data.period) {
         setActivePeriod(data.period);
+        setRefreshKey(prev => prev + 1);
         
         // Atualizar URL com query param ?period=YYYY-MM
         const periodParam = `${data.period.year}-${data.period.month}`;
@@ -155,48 +183,56 @@ function PeriodSelectorInner() {
       
       if (data.ok && data.period) {
         console.log("✅ [PeriodSelector] Período criado com sucesso:", data.period);
-        
-        // Adicionar o período criado diretamente à lista
         const newPeriodData = data.period;
-        setPeriods(prev => {
-          // Verificar se já não está na lista
-          const exists = prev.find(p => p.id === newPeriodData.id);
-          if (exists) {
-            console.log("⚠️ [PeriodSelector] Período já estava na lista, atualizando...");
-            return prev.map(p => p.id === newPeriodData.id ? newPeriodData : p);
-          }
-          console.log("➕ [PeriodSelector] Adicionando novo período à lista");
-          return [newPeriodData, ...prev].sort((a, b) => {
-            if (b.year !== a.year) return b.year - a.year;
-            return b.month - a.month;
-          });
-        });
         
-        // Setar como período ativo
-        setActivePeriod(newPeriodData);
-        
+        // Fechar modal PRIMEIRO
         setShowCreateModal(false);
         setNewPeriod({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, name: "" });
         
-        // Se a resposta inclui mensagem, mostrar
+        // RECARREGAR PERÍODOS DO SERVIDOR PRIMEIRO (fonte da verdade)
+        console.log("🔄 [PeriodSelector] Recarregando lista completa do servidor...");
+        const updatedPeriodsList = await loadPeriods();
+        
+        // Aguardar para garantir que o estado foi atualizado
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Buscar o período recém-criado na lista atualizada
+        const periodToSet = updatedPeriodsList?.find(p => p.id === newPeriodData.id) || newPeriodData;
+        
+        console.log(`✅ [PeriodSelector] Definindo período ativo: ${periodToSet.year}/${periodToSet.month}`);
+        setActivePeriod(periodToSet);
+        setRefreshKey(prev => prev + 1);
+        
+        // Aguardar para garantir renderização
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Atualizar URL com o período ativo
+        const periodParam = `${newPeriodData.year}-${newPeriodData.month}`;
+        const params = new URLSearchParams();
+        if (searchParams) {
+          searchParams.forEach((value, key) => {
+            if (key !== 'period') {
+              params.set(key, value);
+            }
+          });
+        }
+        params.set("period", periodParam);
+        
+        // Atualizar URL
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        
+        // Recarga final para garantir sincronização
+        setTimeout(async () => {
+          await loadPeriods();
+          await loadActivePeriod();
+        }, 1000);
+        
+        // Mostrar mensagem
         if (data.message) {
-          console.log("[PeriodSelector]", data.message);
           alert(`✅ ${data.message}`);
         } else {
           alert("✅ Período criado com sucesso!");
         }
-        
-        // Recarregar períodos do servidor para garantir sincronização
-        console.log("🔄 [PeriodSelector] Recarregando períodos do servidor...");
-        await loadPeriods();
-        
-        // Aguardar um pouco e recarregar período ativo
-        setTimeout(async () => {
-          await loadActivePeriod();
-        }, 300);
-        
-        // Forçar refresh da página
-        router.refresh();
       } else {
         const errorMsg = data.error || "Erro ao criar período";
         console.error("[PeriodSelector] Erro na API:", errorMsg);
@@ -242,9 +278,10 @@ function PeriodSelectorInner() {
               </p>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <div className="flex items-center gap-2">
             <select
-              key={`period-select-${periods.length}-${activePeriod?.id || 'none'}`}
+              key={`period-select-${periods.length}-${activePeriod?.id || 'none'}-${refreshKey}`}
               value={activePeriod?.id || ""}
               onChange={(e) => {
                 if (e.target.value) {
@@ -253,25 +290,38 @@ function PeriodSelectorInner() {
               }}
               className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="">Selecionar período...</option>
-              {periods.length === 0 ? (
-                <option value="" disabled>Nenhum período disponível</option>
-              ) : (
-                periods.map((period) => (
-                  <option key={period.id} value={period.id}>
-                    {period.label || period.name} ({period.year}/{String(period.month).padStart(2, "0")})
-                  </option>
-                ))
-              )}
-            </select>
+                <option value="">Selecionar período...</option>
+                {periods.length === 0 ? (
+                  <option value="" disabled>Nenhum período disponível</option>
+                ) : (
+                  periods.map((period) => {
+                    const displayText = `${period.label || period.name || `${period.year}/${String(period.month).padStart(2, "0")}`} (${period.year}/${String(period.month).padStart(2, "0")})`;
+                    return (
+                      <option key={period.id} value={period.id}>
+                        {displayText}
+                      </option>
+                    );
+                  })
+                )}
+              </select>
+            </div>
             <button
               onClick={() => {
-                console.log("🚀 [PeriodSelector] Botão 'Novo Período' clicado");
                 setShowCreateModal(true);
               }}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
             >
               + Novo Período
+            </button>
+            <button
+              onClick={() => {
+                console.log("🔄 [PeriodSelector] Botão de refresh manual clicado");
+                loadPeriods();
+              }}
+              className="px-3 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 text-sm font-medium"
+              title="Recarregar lista de períodos"
+            >
+              🔄
             </button>
           </div>
         </div>
