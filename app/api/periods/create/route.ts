@@ -125,26 +125,30 @@ export async function POST(req: NextRequest) {
     }
 
     // Desativar todos os outros períodos ANTES de criar o novo
+    console.log(`[periods/create] Desativando todos os períodos existentes...`);
     const { error: deactivateError } = await supabaseAdmin
       .from("periods")
       .update({ is_active: false });
 
     if (deactivateError) {
       console.error("Erro ao desativar períodos:", deactivateError);
+      // Não vamos bloquear a criação se a desativação falhar, mas logamos o erro
+    } else {
+      console.log(`[periods/create] ✅ Todos os períodos foram desativados`);
     }
 
-    // Preparar dados de inserção (sem label primeiro, para evitar erro se coluna não existir)
+    // Preparar dados de inserção
     const insertData: any = {
       year: Number(year),
       month: Number(month),
       name: periodName,
       description: description || null,
-      is_active: true, // IMPORTANTE: garantir que seja true
+      is_active: false, // Criar como false primeiro e depois ativar (mais confiável)
     };
 
     console.log(`[periods/create] Criando novo período:`, insertData);
 
-    // Criar novo período (ativo por padrão)
+    // Criar novo período
     const { data, error } = await supabaseAdmin
       .from("periods")
       .insert(insertData)
@@ -157,26 +161,26 @@ export async function POST(req: NextRequest) {
       throw new Error(`Erro ao criar período: ${error.message} (código: ${error.code})`);
     }
 
-    console.log(`[periods/create] Período criado. Verificando is_active:`, data?.is_active);
+    console.log(`[periods/create] ✅ Período criado com ID:`, data?.id);
+    console.log(`[periods/create] is_active antes da ativação:`, data?.is_active);
 
-    // SEMPRE garantir que is_active seja true após criar
-    let finalPeriod = data;
-    if (data && !data.is_active) {
-      console.warn(`[periods/create] ⚠️ Período criado mas is_active está false! Corrigindo...`);
-      const { data: fixed, error: fixError } = await supabaseAdmin
-        .from("periods")
-        .update({ is_active: true })
-        .eq("id", data.id)
-        .select()
-        .single();
-      
-      if (fixError) {
-        console.error("Erro ao corrigir is_active:", fixError);
-      } else {
-        console.log(`[periods/create] ✅ is_active corrigido para true`);
-        finalPeriod = fixed;
-      }
+    // SEMPRE ativar o período recém-criado (mais confiável do que confiar no insert)
+    console.log(`[periods/create] Ativando período recém-criado...`);
+    const { data: activatedPeriod, error: activateError } = await supabaseAdmin
+      .from("periods")
+      .update({ is_active: true })
+      .eq("id", data.id)
+      .select()
+      .single();
+    
+    if (activateError) {
+      console.error("❌ Erro ao ativar período:", activateError);
+      throw new Error(`Erro ao ativar período recém-criado: ${activateError.message}`);
     }
+
+    console.log(`[periods/create] ✅ Período ativado com sucesso. is_active:`, activatedPeriod?.is_active);
+    
+    let finalPeriod = activatedPeriod || data;
 
     // Tentar atualizar com label se a coluna existir (não crítico se falhar)
     try {
