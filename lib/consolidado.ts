@@ -762,10 +762,13 @@ export async function buildConsolidado(
     const qtdFinal = qtdInicial + qtdEntradas - qtdSaidas;
     const baseQty = qtdInicial + qtdEntradas;
     const custoMedio = baseQty > 0 ? (valorInicial + valorEntradas) / baseQty : null;
-    const valorTotal =
+    // IMPORTANTE: Valores negativos são ignorados (não podem ser usados para contagem)
+    const valorTotalCalculado =
       custoMedio !== null
         ? custoMedio * qtdFinal
         : valorInicial + valorEntradas - valorSaidas;
+    // Se o valor total for negativo ou a quantidade final for negativa, retorna 0
+    const valorTotal = (valorTotalCalculado > 0 && qtdFinal > 0) ? valorTotalCalculado : 0;
 
     const descrFromCatalog = catalogDescriptions.get(cod);
     const descr =
@@ -832,7 +835,8 @@ export async function buildConsolidado(
   }
 
   const summary: ConsolidadoSummary = {
-    totalValor: rows.reduce((acc, row) => acc + row.valor_total, 0),
+    // IMPORTANTE: Valores negativos são ignorados no total (não podem ser usados para contagem)
+    totalValor: rows.reduce((acc, row) => acc + (row.valor_total > 0 ? row.valor_total : 0), 0),
     totalValorEntradas: Array.from(entradaAggregates.values()).reduce(
       (acc, item) => acc + item.valor,
       0

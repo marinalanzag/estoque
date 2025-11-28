@@ -75,7 +75,8 @@ export async function getInventoryFinalData(
     const estoqueTeorico = row.qtd_final;
     const estoqueFinal = estoqueTeorico - baixas;
     const unitCost = row.custo_medio ?? 0;
-    const valorEstoqueFinal = unitCost * estoqueFinal;
+    // IMPORTANTE: Valores negativos são ignorados (não podem ser usados para contagem)
+    const valorEstoqueFinal = (estoqueFinal > 0 && unitCost > 0) ? unitCost * estoqueFinal : 0;
 
     // DEBUG específico para 002064
     if (row.cod_item === debugCode) {
@@ -126,7 +127,8 @@ export async function getInventoryFinalData(
   const summary: InventoryFinalSummary = {
     total_itens: items.length,
     total_quantidade: items.reduce((acc, item) => acc + item.estoque_final, 0),
-    total_valor: items.reduce((acc, item) => acc + item.valor_estoque_final, 0),
+    // IMPORTANTE: Valores negativos são ignorados no total (não podem ser usados para contagem)
+    total_valor: items.reduce((acc, item) => acc + (item.valor_estoque_final > 0 ? item.valor_estoque_final : 0), 0),
     itens_negativos: items.filter((item) => item.estoque_final < 0).length,
     itens_positivos: items.filter((item) => item.estoque_final > 0).length,
     itens_zerados: items.filter((item) => item.estoque_final === 0).length,

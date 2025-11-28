@@ -167,15 +167,17 @@ select
     else null
   end as custo_medio_unitario,
   -- Valor do estoque: estoque_teorico * custo_medio_unitario
+  -- IMPORTANTE: Valores negativos são ignorados (retorna 0) - não podem ser usados para contagem
   case
     when (coalesce(si.estoque_inicial, 0) + coalesce(e.entradas, 0)) > 0
+      and (coalesce(si.estoque_inicial, 0) + coalesce(e.entradas, 0) - coalesce(s.saidas, 0)) > 0
     then (
       coalesce(si.estoque_inicial, 0) + coalesce(e.entradas, 0) - coalesce(s.saidas, 0)
     ) * (
       (coalesce(si.valor_inicial, 0) + coalesce(e.valor_entradas, 0)) / 
       nullif(coalesce(si.estoque_inicial, 0) + coalesce(e.entradas, 0), 0)
     )
-    else null
+    else 0  -- Retorna 0 para estoques negativos ou sem entradas (não considerados no total)
   end as valor_estoque
 from all_items ai
 -- LEFT JOINs: cada CTE já está consolidado, então não há multiplicação de linhas
@@ -189,14 +191,9 @@ left join entradas e
   and ai.cod_item = e.cod_item
 left join saidas s 
   on ai.sped_file_id = s.sped_file_id 
-  and ai.cod_item = s.cod_item
--- Filtrar apenas itens com movimentação ou estoque
-where (
-  coalesce(si.estoque_inicial, 0) > 0
-  or coalesce(e.entradas, 0) > 0
-  or coalesce(s.saidas, 0) > 0
-  or coalesce(si.estoque_inicial, 0) + coalesce(e.entradas, 0) - coalesce(s.saidas, 0) != 0
-);
+  and ai.cod_item = s.cod_item;
+-- REMOVIDO filtro WHERE: TODOS os itens devem aparecer na consolidação, independente de movimentação
+-- Todos os itens que aparecem em products ou document_items serão mostrados
 
 -- Comentários para documentação
-comment on view inventory_theoretical is 'View que consolida inventário teórico com cálculos de custos médios e valores totais por item e sped_file_id. Usa CTEs para consolidar antes de fazer JOINs, evitando multiplicação de linhas. CONVENÇÃO: movement_qty das saídas é NEGATIVA, então usamos ABS() para obter quantidade positiva.';
+comment on view inventory_theoretical is 'View que consolida inventário teórico com cálculos de custos médios e valores totais por item e sped_file_id. Usa CTEs para consolidar antes de fazer JOINs, evitando multiplicação de linhas. CONVENÇÃO: movement_qty das saídas é NEGATIVA, então usamos ABS() para obter quantidade positiva. REGRA DE NEGÓCIO: Valores negativos são ignorados (valor_estoque = 0 quando estoque_teorico <= 0). TODOS os itens aparecem na consolidação, independente de movimentação.';

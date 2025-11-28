@@ -87,8 +87,13 @@ export default async function InventarioPage({ params }: PageProps) {
   const inventoryRows = (inventoryData || []) as InventoryRow[];
 
   // Calcular totais e estatísticas
+  // IMPORTANTE: Valores negativos ou null são ignorados (não podem ser usados para contagem)
   const totalValorInventario = inventoryRows.reduce(
-    (acc, row) => acc + (row.valor_estoque ?? 0),
+    (acc, row) => {
+      const valor = row.valor_estoque ?? 0;
+      // Ignorar valores negativos ou zero
+      return acc + (valor > 0 ? valor : 0);
+    },
     0
   );
 
