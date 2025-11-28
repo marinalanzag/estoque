@@ -27,9 +27,16 @@ function PeriodSelectorInner() {
 
   useEffect(() => {
     loadPeriods();
-    loadActivePeriod();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Carregar período ativo após períodos serem carregados
+  useEffect(() => {
+    if (periods.length > 0) {
+      loadActivePeriod();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periods]);
 
   const loadPeriods = async () => {
     try {
@@ -68,19 +75,34 @@ function PeriodSelectorInner() {
         if (match) {
           const year = parseInt(match[1], 10);
           const month = parseInt(match[2], 10);
-          const period = periods.find(p => p.year === year && p.month === month);
-          if (period) {
-            setActivePeriod(period);
-            return;
+          // Aguardar períodos carregarem se necessário
+          if (periods.length > 0) {
+            const period = periods.find(p => p.year === year && p.month === month);
+            if (period) {
+              setActivePeriod(period);
+              return;
+            }
           }
         }
       }
       
       // Fallback: buscar período ativo da API
-      const res = await fetch("/api/periods/active");
+      const res = await fetch(`/api/periods/active?t=${Date.now()}`, {
+        cache: "no-store",
+      });
       const data = await res.json();
-      if (data.ok) {
+      if (data.ok && data.period) {
         setActivePeriod(data.period);
+        // Garantir que o período está na lista
+        if (periods.length > 0) {
+          const exists = periods.find(p => p.id === data.period.id);
+          if (!exists) {
+            setPeriods(prev => [...prev, data.period].sort((a, b) => {
+              if (b.year !== a.year) return b.year - a.year;
+              return b.month - a.month;
+            }));
+          }
+        }
       }
     } catch (err) {
       console.error("Erro ao carregar período ativo:", err);
@@ -165,11 +187,13 @@ function PeriodSelectorInner() {
         }
         
         // Recarregar períodos do servidor para garantir sincronização
+        console.log("🔄 [PeriodSelector] Recarregando períodos do servidor...");
+        await loadPeriods();
+        
+        // Aguardar um pouco e recarregar período ativo
         setTimeout(async () => {
-          console.log("🔄 [PeriodSelector] Recarregando períodos do servidor...");
-          await loadPeriods();
           await loadActivePeriod();
-        }, 500);
+        }, 300);
         
         // Forçar refresh da página
         router.refresh();
@@ -220,6 +244,7 @@ function PeriodSelectorInner() {
           </div>
           <div className="flex gap-2">
             <select
+              key={`period-select-${periods.length}-${activePeriod?.id || 'none'}`}
               value={activePeriod?.id || ""}
               onChange={(e) => {
                 if (e.target.value) {
@@ -229,11 +254,15 @@ function PeriodSelectorInner() {
               className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="">Selecionar período...</option>
-              {periods.map((period) => (
-                <option key={period.id} value={period.id}>
-                  {period.label || period.name} ({period.year}/{String(period.month).padStart(2, "0")})
-                </option>
-              ))}
+              {periods.length === 0 ? (
+                <option value="" disabled>Nenhum período disponível</option>
+              ) : (
+                periods.map((period) => (
+                  <option key={period.id} value={period.id}>
+                    {period.label || period.name} ({period.year}/{String(period.month).padStart(2, "0")})
+                  </option>
+                ))
+              )}
             </select>
             <button
               onClick={() => {
