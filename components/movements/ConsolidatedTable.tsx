@@ -53,6 +53,11 @@ export default function ConsolidatedTable({ rows }: ConsolidatedTableProps) {
       "Valor Total": row.valor_total,
     }));
 
+    // Calcular custo médio dos totais (se houver estoque final)
+    const custoMedioTotal = totais.qtdFinal > 0 
+      ? totais.valorTotal / totais.qtdFinal 
+      : null;
+
     // Adicionar linha de totais
     exportData.push({
       "Código": "TOTAL",
@@ -62,7 +67,7 @@ export default function ConsolidatedTable({ rows }: ConsolidatedTableProps) {
       "Entradas": totais.entradas,
       "Saídas": totais.saidas,
       "Estoque Final": totais.qtdFinal,
-      "Custo Médio": "",
+      "Custo Médio": custoMedioTotal,
       "Valor Total": totais.valorTotal,
     });
 
