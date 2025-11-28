@@ -787,3 +787,4 @@ A query em `inventory-data/route.ts` é a mais segura. Considerar usar esse padr
 4. Padronizar a busca de ajustes em uma função única
 
 
+

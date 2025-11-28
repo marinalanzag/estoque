@@ -17,3 +17,4 @@ export interface ConsolidadoPorCodigo extends ConsolidatedRow {
 }
 
 
+

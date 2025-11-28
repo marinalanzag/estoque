@@ -138,3 +138,4 @@ R: **SIM!** Sempre faça backup antes de executar qualquer script de limpeza.
 Se tiver dúvidas ou problemas durante a limpeza, revise o script e certifique-se de entender o que cada parte faz antes de executar.
 
 
+
