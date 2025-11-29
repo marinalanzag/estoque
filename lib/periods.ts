@@ -177,17 +177,50 @@ export async function getActivePeriodFromRequest(
   }
 
   // 4. Fallback: buscar período ativo no banco
-  const { data, error } = await supabaseAdmin
+  // IMPORTANTE: Usar array ao invés de .single() para lidar com múltiplos períodos ativos
+  const { data: activePeriods, error } = await supabaseAdmin
     .from("periods")
     .select("*")
     .eq("is_active", true)
-    .single();
+    .order("created_at", { ascending: false }); // Mais recente primeiro
 
-  if (error || !data) {
+  if (error) {
+    console.error("[getActivePeriodFromRequest] Erro ao buscar período ativo:", error);
     return null;
   }
 
-  return data as Period;
+  // Se não houver períodos ativos
+  if (!activePeriods || activePeriods.length === 0) {
+    return null;
+  }
+
+  // Se houver múltiplos períodos ativos, retornar o mais recente e corrigir no banco
+  if (activePeriods.length > 1) {
+    console.warn(
+      `[getActivePeriodFromRequest] ⚠️ Encontrados ${activePeriods.length} períodos ativos. Retornando o mais recente.`
+    );
+    
+    // Opcionalmente, corrigir no banco desativando os outros
+    const mostRecent = activePeriods[0];
+    const duplicates = activePeriods.slice(1);
+    
+    if (duplicates.length > 0) {
+      const duplicateIds = duplicates.map((p) => p.id);
+      await supabaseAdmin
+        .from("periods")
+        .update({ is_active: false })
+        .in("id", duplicateIds);
+      
+      console.log(
+        `[getActivePeriodFromRequest] ✅ ${duplicates.length} períodos duplicados foram desativados.`
+      );
+    }
+    
+    return mostRecent as Period;
+  }
+
+  // Um único período ativo
+  return activePeriods[0] as Period;
 }
 
 /**

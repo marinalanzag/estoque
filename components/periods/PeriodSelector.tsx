@@ -83,56 +83,67 @@ function PeriodSelectorInner() {
 
   const loadActivePeriod = async () => {
     try {
-      // Primeiro tentar ler do query param
-      const periodParam = searchParams.get("period");
-      if (periodParam) {
-        const match = periodParam.match(/^(\d{4})-(\d{1,2})$/);
-        if (match) {
-          const year = parseInt(match[1], 10);
-          const month = parseInt(match[2], 10);
-          // Aguardar períodos carregarem se necessário
-          if (periods.length > 0) {
-            const period = periods.find(p => p.year === year && p.month === month);
-            if (period) {
-              setActivePeriod(period);
-              setRefreshKey(prev => prev + 1);
-              return;
-            }
-          }
-        }
-      }
-      
-      // Fallback: buscar período ativo da API
+      // SEMPRE buscar período ativo da API primeiro (fonte de verdade)
       const res = await fetch(`/api/periods/active?t=${Date.now()}`, {
         cache: "no-store",
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        },
       });
       const data = await res.json();
+      
       if (data.ok && data.period) {
-        setActivePeriod(data.period);
+        const activeFromServer = data.period;
+        
+        // Verificar se o query param corresponde ao período ativo
+        const periodParam = searchParams.get("period");
+        const expectedParam = `${activeFromServer.year}-${activeFromServer.month}`;
+        
+        // Se o query param não corresponder, atualizar URL
+        if (periodParam !== expectedParam) {
+          console.log(`[PeriodSelector] Query param (${periodParam}) não corresponde ao período ativo (${expectedParam}). Atualizando URL...`);
+          const params = new URLSearchParams(searchParams.toString());
+          params.set("period", expectedParam);
+          router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        }
+        
+        // Definir período ativo
+        setActivePeriod(activeFromServer);
         
         // Sempre garantir que o período ativo está na lista
         setPeriods(prev => {
-          const exists = prev.find(p => p.id === data.period.id);
+          const exists = prev.find(p => p.id === activeFromServer.id);
           if (!exists) {
-            const newList = [data.period, ...prev].sort((a, b) => {
+            const newList = [activeFromServer, ...prev].sort((a, b) => {
               if (b.year !== a.year) return b.year - a.year;
               return b.month - a.month;
             });
             setRefreshKey(prev => prev + 1);
             return newList;
           }
-          // Atualizar período existente se houver mudanças
-          const updated = prev.map(p => p.id === data.period.id ? data.period : p);
+          // Atualizar período existente se houver mudanças (especialmente is_active)
+          const updated = prev.map(p => p.id === activeFromServer.id ? activeFromServer : p);
           if (JSON.stringify(prev) !== JSON.stringify(updated)) {
             setRefreshKey(prev => prev + 1);
           }
           return updated;
         });
+        
+        setRefreshKey(prev => prev + 1);
       } else if (data.ok && !data.period) {
+        // Nenhum período ativo - remover query param se existir
+        if (searchParams.get("period")) {
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete("period");
+          router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        }
         setActivePeriod(null);
+        setRefreshKey(prev => prev + 1);
       }
     } catch (err) {
-      console.error("Erro ao carregar período ativo:", err);
+      console.error("[PeriodSelector] Erro ao carregar período ativo:", err);
+      setActivePeriod(null);
     }
   };
 
@@ -142,6 +153,7 @@ function PeriodSelectorInner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ periodId }),
+        cache: "no-store",
       });
       const data = await res.json();
       if (data.ok && data.period) {
@@ -153,8 +165,14 @@ function PeriodSelectorInner() {
         const params = new URLSearchParams(searchParams.toString());
         params.set("period", periodParam);
         
-        // Redirecionar para a mesma rota com o query param
-        router.push(`${pathname}?${params.toString()}`);
+        const newUrl = `${pathname}?${params.toString()}`;
+        
+        // Recarregar períodos do servidor primeiro
+        await loadPeriods();
+        
+        // Atualizar URL e forçar revalidação das páginas server-side
+        router.replace(newUrl, { scroll: false });
+        router.refresh();
       }
     } catch (err) {
       console.error("Erro ao ativar período:", err);
@@ -207,38 +225,32 @@ function PeriodSelectorInner() {
         setActivePeriod(newPeriodData);
         setRefreshKey(prev => prev + 1);
         
-        // Atualizar URL SEM fazer replace que pode remontar componente em produção
+        // Atualizar URL e forçar revalidação das páginas server-side
         const periodParam = `${newPeriodData.year}-${newPeriodData.month}`;
         
-        // Verificar se estamos no cliente antes de usar window
-        if (typeof window !== 'undefined') {
-          const params = new URLSearchParams(window.location.search);
-          params.set("period", periodParam);
-          
-          // Usar history.pushState ao invés de router.replace para não remontar
-          const newUrl = `${window.location.pathname}?${params.toString()}`;
-          window.history.pushState({}, '', newUrl);
-        } else {
-          // Fallback: usar router se window não estiver disponível
-          const params = new URLSearchParams();
-          if (searchParams) {
-            searchParams.forEach((value, key) => {
-              if (key !== 'period') {
-                params.set(key, value);
-              }
-            });
-          }
-          params.set("period", periodParam);
-          router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        // Construir nova URL com query params
+        const params = new URLSearchParams();
+        if (searchParams) {
+          searchParams.forEach((value, key) => {
+            if (key !== 'period') {
+              params.set(key, value);
+            }
+          });
         }
+        params.set("period", periodParam);
+        const newUrl = `${pathname}?${params.toString()}`;
         
-        // RECARREGAR DO SERVIDOR EM BACKGROUND para garantir sincronização
-        console.log("🔄 [PeriodSelector] Recarregando lista do servidor em background...");
+        // RECARREGAR DO SERVIDOR PRIMEIRO antes de atualizar URL
+        console.log("🔄 [PeriodSelector] Recarregando lista do servidor...");
         
-        // Usar múltiplas tentativas para garantir que funcione em produção
-        const reloadWithRetry = async (retries = 3) => {
+        // Função para recarregar e atualizar
+        const reloadAndUpdate = async (retries = 3) => {
           for (let i = 0; i < retries; i++) {
             try {
+              // Aguardar um pouco para garantir que o período foi salvo no banco
+              await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
+              
+              // Recarregar períodos do servidor
               const updatedPeriodsList = await loadPeriods();
               
               // Verificar se o período está na lista
@@ -251,34 +263,44 @@ function PeriodSelectorInner() {
                 setActivePeriod(foundPeriod);
                 setRefreshKey(prev => prev + 1);
                 
+                // Agora atualizar URL e forçar refresh das páginas server-side
+                console.log("🔄 [PeriodSelector] Forçando revalidação das páginas server-side...");
+                
+                // Usar router.replace para atualizar URL e forçar revalidação
+                router.replace(newUrl, { scroll: false });
+                
+                // Forçar refresh do router para atualizar páginas server-side
+                router.refresh();
+                
                 return true;
               }
               
               if (i < retries - 1) {
                 console.log(`⏳ [PeriodSelector] Tentativa ${i + 1} falhou, aguardando antes de tentar novamente...`);
-                await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1))); // Backoff exponencial
               }
             } catch (error) {
               console.error(`❌ [PeriodSelector] Erro na tentativa ${i + 1}:`, error);
               if (i < retries - 1) {
-                await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+                await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
               }
             }
           }
           return false;
         };
         
-        // Iniciar recarregamento em background
-        reloadWithRetry().then(success => {
+        // Iniciar recarregamento
+        reloadAndUpdate().then(success => {
           if (!success) {
-            console.warn("⚠️ [PeriodSelector] Não foi possível confirmar período no servidor, mas ele está na lista local");
-            // Mesmo se falhar, o período já está na lista local e funcionando
+            console.warn("⚠️ [PeriodSelector] Não foi possível confirmar período no servidor, forçando refresh mesmo assim...");
+            // Mesmo se falhar, tentar atualizar URL e forçar refresh
+            router.replace(newUrl, { scroll: false });
+            router.refresh();
           }
         });
         
         // Mostrar mensagem
         const message = data.message || "Período criado com sucesso!";
-        alert(`✅ ${message}\n\nO período foi criado e deve aparecer no dropdown. Se não aparecer, use o botão de refresh.`);
+        alert(`✅ ${message}\n\nA página será atualizada automaticamente para refletir o novo período.`);
       } else {
         const errorMsg = data.error || "Erro ao criar período";
         console.error("[PeriodSelector] Erro na API:", errorMsg);
