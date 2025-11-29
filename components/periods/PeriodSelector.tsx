@@ -355,9 +355,20 @@ function PeriodSelectorInner() {
   ];
 
   const formatPeriodDisplay = (period: Period) => {
+    // Prioridade: label > name válido > formato gerado
+    if (period.label && period.label.trim()) {
+      return period.label;
+    }
+    
+    // Verificar se name é válido (não é apenas número ou muito curto)
+    const name = period.name?.trim();
+    if (name && name.length > 1 && !/^\d+$/.test(name)) {
+      return name;
+    }
+    
+    // Fallback: sempre gerar formato legível "Mês/Ano" ou "Agosto 2021"
     const monthName = monthNames[period.month - 1] || `Mês ${period.month}`;
-    const label = period.label || `${monthName} ${period.year}`;
-    return label;
+    return `${monthName} ${period.year}`;
   };
 
   return (
@@ -460,7 +471,13 @@ function PeriodSelectorInner() {
                       // Adicionar períodos do ano
                       yearPeriods.forEach((period) => {
                         const isActive = period.id === activePeriod?.id;
-                        const displayText = formatPeriodDisplay(period);
+                        let displayText = formatPeriodDisplay(period);
+                        
+                        // Garantir que sempre tenha algo para mostrar
+                        if (!displayText || displayText.trim() === '') {
+                          displayText = `${period.year}/${String(period.month).padStart(2, '0')}`;
+                        }
+                        
                         options.push(
                           <option 
                             key={period.id} 

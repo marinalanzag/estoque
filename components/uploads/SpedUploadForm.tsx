@@ -28,8 +28,23 @@ export default function SpedUploadForm({
   const [spedFiles, setSpedFiles] = useState<SpedFile[]>([]);
   const [selectedSpedFileId, setSelectedSpedFileId] = useState<string>("");
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [activePeriodId, setActivePeriodId] = useState<string | null>(null);
 
   useEffect(() => {
+    // Carregar período ativo
+    const loadActivePeriod = async () => {
+      try {
+        const res = await fetch("/api/periods/active");
+        const data = await res.json();
+        if (data.ok && data.period) {
+          setActivePeriodId(data.period.id);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar período ativo:", err);
+      }
+    };
+    loadActivePeriod();
+    
     if (mode === "select") {
       loadSpedFiles();
     }
@@ -245,12 +260,18 @@ export default function SpedUploadForm({
                     disabled={isLoading}
                   >
                     <option value="">Selecione um arquivo SPED...</option>
-                    {spedFiles.map((spedFile) => (
-                      <option key={spedFile.id} value={spedFile.id}>
-                        {spedFile.name} ({new Date(spedFile.uploaded_at).toLocaleDateString("pt-BR")})
-                        {spedFile.period_id && " (já vinculado)"}
-                      </option>
-                    ))}
+                    {spedFiles.map((spedFile) => {
+                      const isLinkedToActivePeriod = activePeriodId && spedFile.period_id === activePeriodId;
+                      const isLinkedToOtherPeriod = spedFile.period_id && !isLinkedToActivePeriod;
+                      
+                      return (
+                        <option key={spedFile.id} value={spedFile.id}>
+                          {spedFile.name} ({new Date(spedFile.uploaded_at).toLocaleDateString("pt-BR")})
+                          {isLinkedToActivePeriod && " (vinculado ao período atual)"}
+                          {isLinkedToOtherPeriod && " (vinculado a outro período)"}
+                        </option>
+                      );
+                    })}
                   </select>
                 )}
               </div>

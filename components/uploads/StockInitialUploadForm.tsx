@@ -31,8 +31,23 @@ export default function StockInitialUploadForm({
   const [imports, setImports] = useState<StockImport[]>([]);
   const [selectedImportId, setSelectedImportId] = useState<string>("");
   const [loadingImports, setLoadingImports] = useState(false);
+  const [activePeriodId, setActivePeriodId] = useState<string | null>(null);
 
   useEffect(() => {
+    // Carregar período ativo
+    const loadActivePeriod = async () => {
+      try {
+        const res = await fetch("/api/periods/active");
+        const data = await res.json();
+        if (data.ok && data.period) {
+          setActivePeriodId(data.period.id);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar período ativo:", err);
+      }
+    };
+    loadActivePeriod();
+    
     if (mode === "select") {
       loadImports();
     }
@@ -271,12 +286,18 @@ export default function StockInitialUploadForm({
                     disabled={isLoading}
                   >
                     <option value="">Selecione um import...</option>
-                    {imports.map((imp) => (
-                      <option key={imp.id} value={imp.id}>
-                        {imp.label || `Import ${new Date(imp.created_at).toLocaleDateString("pt-BR")}`} - {imp.total_items} itens
-                        {imp.period_id && " (já vinculado)"}
-                      </option>
-                    ))}
+                    {imports.map((imp) => {
+                      const isLinkedToActivePeriod = activePeriodId && imp.period_id === activePeriodId;
+                      const isLinkedToOtherPeriod = imp.period_id && !isLinkedToActivePeriod;
+                      
+                      return (
+                        <option key={imp.id} value={imp.id}>
+                          {imp.label || `Import ${new Date(imp.created_at).toLocaleDateString("pt-BR")}`} - {imp.total_items} itens
+                          {isLinkedToActivePeriod && " (vinculado ao período atual)"}
+                          {isLinkedToOtherPeriod && " (vinculado a outro período)"}
+                        </option>
+                      );
+                    })}
                   </select>
                 )}
               </div>
