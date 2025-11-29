@@ -29,11 +29,18 @@ function PeriodSelectorInner() {
   // Carregar períodos e período ativo ao montar o componente
   useEffect(() => {
     const loadAll = async () => {
-      console.log("[PeriodSelector] Iniciando carregamento inicial...");
+      console.log("[PeriodSelector] 🔄 Componente montado - Iniciando carregamento inicial...");
+      console.log(`[PeriodSelector] Estado inicial: ${periods.length} períodos no estado`);
+      
+      // Forçar carregamento do servidor (ignorar qualquer estado anterior)
       await loadPeriods();
+      
       // Aguardar um pouco para garantir que períodos foram carregados
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       await loadActivePeriod();
+      
+      console.log(`[PeriodSelector] ✅ Carregamento inicial concluído. Períodos no estado: ${periods.length}`);
     };
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,10 +112,13 @@ function PeriodSelectorInner() {
       
       if (data.ok && data.periods) {
         const periodsList = (data.periods || []) as Period[];
-        console.log(`[PeriodSelector] ✅ Carregados ${periodsList.length} períodos:`, 
-          periodsList.map(p => `${p.year}/${String(p.month).padStart(2, '0')} - ${p.name} (ativo: ${p.is_active})`));
+        console.log(`[PeriodSelector] ✅ Carregados ${periodsList.length} períodos do servidor`);
+        console.log(`[PeriodSelector] 📊 Count na resposta: ${data.count || 'não fornecido'}`);
+        console.log(`[PeriodSelector] 📋 Lista de períodos:`, 
+          periodsList.map(p => `${p.year}/${String(p.month).padStart(2, '0')} - ${p.name || 'sem nome'} (ativo: ${p.is_active}, id: ${p.id?.substring(0, 8)}...)`));
         
-        // SEMPRE atualizar a lista com os dados do servidor
+        // SEMPRE atualizar a lista com os dados do servidor (substituir completamente, não fazer merge)
+        console.log(`[PeriodSelector] 🔄 Atualizando estado: de ${periods.length} para ${periodsList.length} períodos`);
         setPeriods(periodsList);
         
         // Forçar atualização do select após carregar períodos
@@ -329,8 +339,12 @@ function PeriodSelectorInner() {
                 setActivePeriod(foundPeriod);
                 setRefreshKey(prev => prev + 1);
                 
-                // Aguardar um pouco mais antes de fazer refresh para garantir que estado foi atualizado
-                await new Promise(resolve => setTimeout(resolve, 300));
+                // IMPORTANTE: Atualizar estado ANTES de fazer router.refresh()
+                // para que o contador seja atualizado antes do refresh remontar o componente
+                console.log(`[PeriodSelector] ✅ Estado atualizado com ${updatedPeriodsList.length} períodos ANTES do refresh`);
+                
+                // Aguardar um pouco para garantir que React processou a atualização do estado
+                await new Promise(resolve => setTimeout(resolve, 500));
                 
                 // Agora atualizar URL e forçar refresh das páginas server-side
                 console.log("🔄 [PeriodSelector] Forçando revalidação das páginas server-side...");
@@ -343,6 +357,14 @@ function PeriodSelectorInner() {
                 
                 // Forçar refresh do router para atualizar páginas server-side
                 router.refresh();
+                
+                // APÓS o refresh, recarregar períodos novamente para garantir sincronização
+                // O router.refresh() pode remontar o componente, então precisamos garantir
+                // que os períodos sejam recarregados quando o componente remontar
+                setTimeout(async () => {
+                  console.log("🔄 [PeriodSelector] Recarregando períodos após router.refresh()...");
+                  await loadPeriods();
+                }, 1000);
                 
                 return true;
               } else {
