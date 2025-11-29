@@ -281,7 +281,8 @@ function PeriodSelectorInner() {
               if (b.year !== a.year) return b.year - a.year;
               return b.month - a.month;
             });
-            console.log(`[PeriodSelector] Período adicionado à lista local: ${newPeriodData.year}/${newPeriodData.month}`);
+            console.log(`[PeriodSelector] ✅ Período adicionado à lista local: ${newPeriodData.year}/${newPeriodData.month}`);
+            console.log(`[PeriodSelector] 📊 Contador atualizado: ${prev.length} → ${newList.length} períodos`);
             return newList;
           }
           return prev;
@@ -290,6 +291,9 @@ function PeriodSelectorInner() {
         // DEFINIR COMO ATIVO IMEDIATAMENTE
         setActivePeriod(newPeriodData);
         setRefreshKey(prev => prev + 1);
+        
+        // FORÇAR atualização do contador imediatamente após adicionar localmente
+        console.log(`[PeriodSelector] 🔄 Forçando atualização do contador após adicionar período localmente`);
         
         // Atualizar URL e forçar revalidação das páginas server-side
         const periodParam = `${newPeriodData.year}-${newPeriodData.month}`;
@@ -386,17 +390,23 @@ function PeriodSelectorInner() {
         };
         
         // SEMPRE recarregar períodos do servidor após criar para garantir que o contador seja atualizado
-        // Fazer isso após um tempo para garantir que o período foi persistido
-        setTimeout(async () => {
-          console.log("🔄 [PeriodSelector] Recarregamento final de períodos para garantir sincronização do contador...");
-          const finalList = await loadPeriods();
-          if (finalList && finalList.length > 0) {
-            console.log(`✅ [PeriodSelector] Lista final recarregada: ${finalList.length} períodos - Contador deve mostrar ${finalList.length}`);
-            // O loadPeriods já atualiza o estado com setPeriods, então o contador será atualizado automaticamente
-          } else {
-            console.warn("⚠️ [PeriodSelector] Lista final vazia ou erro ao recarregar");
-          }
-        }, 3000);
+        // IMPORTANTE: Fazer múltiplos recarregamentos para garantir sincronização
+        // mesmo se o router.refresh() remontar o componente
+        const recarregamentos = [1000, 2500, 4000]; // 1s, 2.5s, 4s
+        
+        recarregamentos.forEach((delay, index) => {
+          setTimeout(async () => {
+            console.log(`🔄 [PeriodSelector] Recarregamento ${index + 1}/${recarregamentos.length} após ${delay}ms...`);
+            const finalList = await loadPeriods();
+            if (finalList && finalList.length > 0) {
+              console.log(`✅ [PeriodSelector] Lista recarregada (${index + 1}): ${finalList.length} períodos - Contador deve mostrar ${finalList.length}`);
+              // Forçar atualização do contador
+              setRefreshKey(prev => prev + 1);
+            } else {
+              console.warn(`⚠️ [PeriodSelector] Lista vazia no recarregamento ${index + 1}`);
+            }
+          }, delay);
+        });
         
         // Iniciar recarregamento
         reloadAndUpdate().then(success => {
