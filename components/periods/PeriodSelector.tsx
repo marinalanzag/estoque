@@ -26,24 +26,36 @@ function PeriodSelectorInner() {
   const [creating, setCreating] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Carregar períodos e período ativo ao montar o componente
   useEffect(() => {
-    loadPeriods();
+    const loadAll = async () => {
+      console.log("[PeriodSelector] Iniciando carregamento inicial...");
+      await loadPeriods();
+      // Aguardar um pouco para garantir que períodos foram carregados
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await loadActivePeriod();
+    };
+    loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Carregar período ativo após períodos serem carregados
+  // Recarregar período ativo quando períodos mudarem (para garantir sincronização)
   useEffect(() => {
     if (periods.length > 0) {
+      console.log(`[PeriodSelector] Períodos mudaram (${periods.length} períodos). Recarregando período ativo...`);
       loadActivePeriod();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periods]);
+  }, [periods.length]); // Usar apenas o length para evitar loops
 
 
   const loadPeriods = async () => {
     try {
+      setLoading(true);
       // Adicionar timestamp para evitar cache
       const timestamp = Date.now();
+      console.log(`[PeriodSelector] 🔄 Carregando períodos... (timestamp: ${timestamp})`);
+      
       const res = await fetch(`/api/periods/list?t=${timestamp}`, {
         cache: "no-store",
         headers: {
@@ -53,15 +65,18 @@ function PeriodSelectorInner() {
       });
       
       if (!res.ok) {
-        console.error("[PeriodSelector] Erro ao carregar períodos:", res.status, res.statusText);
+        console.error("[PeriodSelector] ❌ Erro ao carregar períodos:", res.status, res.statusText);
         setLoading(false);
         return [];
       }
       
       const data = await res.json();
-      if (data.ok) {
+      console.log("[PeriodSelector] 📦 Resposta da API /api/periods/list:", data);
+      
+      if (data.ok && data.periods) {
         const periodsList = (data.periods || []) as Period[];
-        console.log(`[PeriodSelector] ✅ Carregados ${periodsList.length} períodos`);
+        console.log(`[PeriodSelector] ✅ Carregados ${periodsList.length} períodos:`, 
+          periodsList.map(p => `${p.year}/${String(p.month).padStart(2, '0')} - ${p.name} (ativo: ${p.is_active})`));
         
         // SEMPRE atualizar a lista com os dados do servidor
         setPeriods(periodsList);
@@ -69,20 +84,24 @@ function PeriodSelectorInner() {
         // Forçar atualização do select após carregar períodos
         setRefreshKey(prev => prev + 1);
         
+        setLoading(false);
         return periodsList; // Retornar para uso externo
       } else {
-        console.error("[PeriodSelector] Erro ao carregar períodos:", data.error);
+        console.error("[PeriodSelector] ❌ Erro na resposta da API:", data.error || "Resposta inválida");
+        setLoading(false);
+        return [];
       }
     } catch (err) {
-      console.error("[PeriodSelector] Erro ao carregar períodos:", err);
-    } finally {
+      console.error("[PeriodSelector] ❌ Erro ao carregar períodos:", err);
       setLoading(false);
+      return [];
     }
-    return [];
   };
 
   const loadActivePeriod = async () => {
     try {
+      console.log("[PeriodSelector] Carregando período ativo...");
+      
       // SEMPRE buscar período ativo da API primeiro (fonte de verdade)
       const res = await fetch(`/api/periods/active?t=${Date.now()}`, {
         cache: "no-store",
@@ -91,10 +110,13 @@ function PeriodSelectorInner() {
           'Pragma': 'no-cache',
         },
       });
+      
       const data = await res.json();
+      console.log("[PeriodSelector] Resposta da API /api/periods/active:", data);
       
       if (data.ok && data.period) {
         const activeFromServer = data.period;
+        console.log(`[PeriodSelector] ✅ Período ativo encontrado: ${activeFromServer.year}/${activeFromServer.month} (${activeFromServer.name})`);
         
         // Verificar se o query param corresponde ao período ativo
         const periodParam = searchParams.get("period");
@@ -115,6 +137,7 @@ function PeriodSelectorInner() {
         setPeriods(prev => {
           const exists = prev.find(p => p.id === activeFromServer.id);
           if (!exists) {
+            console.log(`[PeriodSelector] Período ativo não estava na lista. Adicionando...`);
             const newList = [activeFromServer, ...prev].sort((a, b) => {
               if (b.year !== a.year) return b.year - a.year;
               return b.month - a.month;
@@ -124,7 +147,9 @@ function PeriodSelectorInner() {
           }
           // Atualizar período existente se houver mudanças (especialmente is_active)
           const updated = prev.map(p => p.id === activeFromServer.id ? activeFromServer : p);
-          if (JSON.stringify(prev) !== JSON.stringify(updated)) {
+          const hasChanges = JSON.stringify(prev) !== JSON.stringify(updated);
+          if (hasChanges) {
+            console.log(`[PeriodSelector] Período ativo foi atualizado na lista.`);
             setRefreshKey(prev => prev + 1);
           }
           return updated;
@@ -132,6 +157,7 @@ function PeriodSelectorInner() {
         
         setRefreshKey(prev => prev + 1);
       } else if (data.ok && !data.period) {
+        console.log("[PeriodSelector] ⚠️ Nenhum período ativo encontrado no servidor.");
         // Nenhum período ativo - remover query param se existir
         if (searchParams.get("period")) {
           const params = new URLSearchParams(searchParams.toString());
@@ -142,7 +168,7 @@ function PeriodSelectorInner() {
         setRefreshKey(prev => prev + 1);
       }
     } catch (err) {
-      console.error("[PeriodSelector] Erro ao carregar período ativo:", err);
+      console.error("[PeriodSelector] ❌ Erro ao carregar período ativo:", err);
       setActivePeriod(null);
     }
   };
@@ -393,54 +419,71 @@ function PeriodSelectorInner() {
                 className="px-4 py-2.5 border-2 border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-colors min-w-[240px]"
               >
                 <option value="">Selecionar período...</option>
-                {periods.length === 0 ? (
+                {loading ? (
+                  <option value="" disabled>Carregando períodos...</option>
+                ) : periods.length === 0 ? (
                   <option value="" disabled>Nenhum período disponível</option>
                 ) : (() => {
-                  // Agrupar períodos por ano
-                  const groupedByYear = periods.reduce((acc, period) => {
-                    if (!acc[period.year]) {
-                      acc[period.year] = [];
-                    }
-                    acc[period.year].push(period);
-                    return acc;
-                  }, {} as Record<number, Period[]>);
-
-                  // Ordenar anos do mais recente para o mais antigo
-                  const sortedYears = Object.keys(groupedByYear)
-                    .map(Number)
-                    .sort((a, b) => b - a);
-
-                  const options: JSX.Element[] = [];
-                  
-                  sortedYears.forEach((year, yearIndex) => {
-                    const yearPeriods = groupedByYear[year].sort((a, b) => b.month - a.month);
+                  try {
+                    // Debug: log dos períodos que estão sendo renderizados
+                    console.log(`[PeriodSelector] 🎯 Renderizando dropdown com ${periods.length} períodos:`, 
+                      periods.map(p => `${p.year}/${p.month} - ${p.name} (id: ${p.id}, ativo: ${p.is_active})`));
                     
-                    // Adicionar separador de ano se houver múltiplos anos
-                    if (sortedYears.length > 1 && yearIndex > 0) {
-                      options.push(
-                        <option key={`sep-${year}`} disabled>
-                          ─────────────────────
-                        </option>
-                      );
-                    }
+                    // Agrupar períodos por ano
+                    const groupedByYear = periods.reduce((acc, period) => {
+                      if (!acc[period.year]) {
+                        acc[period.year] = [];
+                      }
+                      acc[period.year].push(period);
+                      return acc;
+                    }, {} as Record<number, Period[]>);
+
+                    // Ordenar anos do mais recente para o mais antigo
+                    const sortedYears = Object.keys(groupedByYear)
+                      .map(Number)
+                      .sort((a, b) => b - a);
+
+                    const options: JSX.Element[] = [];
                     
-                    // Adicionar períodos do ano
-                    yearPeriods.forEach((period) => {
-                      const isActive = period.id === activePeriod?.id;
-                      const displayText = formatPeriodDisplay(period);
-                      options.push(
-                        <option 
-                          key={period.id} 
-                          value={period.id}
-                          style={isActive ? { fontWeight: 'bold', backgroundColor: '#dbeafe' } : {}}
-                        >
-                          {isActive ? "✓ " : ""}{displayText} {sortedYears.length > 1 ? `(${year})` : ''}
-                        </option>
-                      );
+                    sortedYears.forEach((year, yearIndex) => {
+                      const yearPeriods = groupedByYear[year].sort((a, b) => b.month - a.month);
+                      
+                      // Adicionar separador de ano se houver múltiplos anos
+                      if (sortedYears.length > 1 && yearIndex > 0) {
+                        options.push(
+                          <option key={`sep-${year}`} disabled>
+                            ─────────────────────
+                          </option>
+                        );
+                      }
+                      
+                      // Adicionar períodos do ano
+                      yearPeriods.forEach((period) => {
+                        const isActive = period.id === activePeriod?.id;
+                        const displayText = formatPeriodDisplay(period);
+                        options.push(
+                          <option 
+                            key={period.id} 
+                            value={period.id}
+                            style={isActive ? { fontWeight: 'bold', backgroundColor: '#dbeafe' } : {}}
+                          >
+                            {isActive ? "✓ " : ""}{displayText} {sortedYears.length > 1 ? `(${year})` : ''}
+                          </option>
+                        );
+                      });
                     });
-                  });
-                  
-                  return options;
+                    
+                    console.log(`[PeriodSelector] ✅ ${options.length} opções criadas para o dropdown`);
+                    return options;
+                  } catch (error) {
+                    console.error("[PeriodSelector] ❌ Erro ao renderizar períodos no dropdown:", error);
+                    // Fallback: renderizar períodos de forma simples
+                    return periods.map((period) => (
+                      <option key={period.id} value={period.id}>
+                        {formatPeriodDisplay(period)}
+                      </option>
+                    ));
+                  }
                 })()}
               </select>
             </div>
