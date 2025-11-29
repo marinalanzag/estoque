@@ -48,6 +48,36 @@ function PeriodSelectorInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periods.length]); // Usar apenas o length para evitar loops
 
+  // Recarregar períodos quando o query param period mudar (pode indicar novo período criado ou mudança de período)
+  useEffect(() => {
+    const periodParam = searchParams.get("period");
+    const hasPeriodParam = periodParam !== null;
+    
+    // Só recarregar se tiver um query param e ainda não tiver períodos carregados ou se houver mudança
+    if (hasPeriodParam && !loading && periods.length > 0) {
+      console.log(`[PeriodSelector] Query param period detectado: ${periodParam}. Verificando se períodos precisam ser recarregados...`);
+      // Verificar se o período do query param está na lista
+      const match = periodParam.match(/^(\d{4})-(\d{1,2})$/);
+      if (match) {
+        const year = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10);
+        const periodExists = periods.find(p => p.year === year && p.month === month);
+        
+        if (!periodExists) {
+          console.log(`[PeriodSelector] Período ${year}/${month} não encontrado na lista. Recarregando períodos...`);
+          // Aguardar um pouco para garantir que o período foi salvo no banco
+          const timer = setTimeout(() => {
+            loadPeriods().then(() => {
+              loadActivePeriod();
+            });
+          }, 1000);
+          return () => clearTimeout(timer);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("period"), loading]);
+
 
   const loadPeriods = async () => {
     try {
@@ -270,24 +300,37 @@ function PeriodSelectorInner() {
         console.log("🔄 [PeriodSelector] Recarregando lista do servidor...");
         
         // Função para recarregar e atualizar
-        const reloadAndUpdate = async (retries = 3) => {
+        const reloadAndUpdate = async (retries = 5) => {
           for (let i = 0; i < retries; i++) {
             try {
               // Aguardar um pouco para garantir que o período foi salvo no banco
-              await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
+              const delay = 500 * (i + 1);
+              console.log(`⏳ [PeriodSelector] Tentativa ${i + 1}/${retries}: Aguardando ${delay}ms antes de recarregar...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
               
               // Recarregar períodos do servidor
               const updatedPeriodsList = await loadPeriods();
               
+              if (!updatedPeriodsList || updatedPeriodsList.length === 0) {
+                console.warn(`⚠️ [PeriodSelector] Lista vazia retornada na tentativa ${i + 1}`);
+                continue;
+              }
+              
+              console.log(`📊 [PeriodSelector] Lista recarregada: ${updatedPeriodsList.length} períodos encontrados`);
+              
               // Verificar se o período está na lista
-              const foundPeriod = updatedPeriodsList?.find(p => p.id === newPeriodData.id);
+              const foundPeriod = updatedPeriodsList.find(p => p.id === newPeriodData.id);
               if (foundPeriod) {
                 console.log(`✅ [PeriodSelector] Período confirmado no servidor após ${i + 1} tentativa(s)`);
+                console.log(`📋 [PeriodSelector] Total de períodos no servidor: ${updatedPeriodsList.length}`);
                 
-                // Atualizar estado com dados do servidor
+                // Atualizar estado com dados do servidor (garantir que o contador seja atualizado)
                 setPeriods(updatedPeriodsList);
                 setActivePeriod(foundPeriod);
                 setRefreshKey(prev => prev + 1);
+                
+                // Aguardar um pouco mais antes de fazer refresh para garantir que estado foi atualizado
+                await new Promise(resolve => setTimeout(resolve, 300));
                 
                 // Agora atualizar URL e forçar refresh das páginas server-side
                 console.log("🔄 [PeriodSelector] Forçando revalidação das páginas server-side...");
@@ -295,14 +338,19 @@ function PeriodSelectorInner() {
                 // Usar router.replace para atualizar URL e forçar revalidação
                 router.replace(newUrl, { scroll: false });
                 
+                // Aguardar antes de fazer refresh para garantir que URL foi atualizada
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
                 // Forçar refresh do router para atualizar páginas server-side
                 router.refresh();
                 
                 return true;
+              } else {
+                console.warn(`⚠️ [PeriodSelector] Período ${newPeriodData.year}/${newPeriodData.month} não encontrado na lista após tentativa ${i + 1}`);
               }
               
               if (i < retries - 1) {
-                console.log(`⏳ [PeriodSelector] Tentativa ${i + 1} falhou, aguardando antes de tentar novamente...`);
+                console.log(`⏳ [PeriodSelector] Tentando novamente em ${500 * (i + 2)}ms...`);
               }
             } catch (error) {
               console.error(`❌ [PeriodSelector] Erro na tentativa ${i + 1}:`, error);
@@ -311,8 +359,22 @@ function PeriodSelectorInner() {
               }
             }
           }
+          console.warn(`⚠️ [PeriodSelector] Não foi possível encontrar período após ${retries} tentativas`);
           return false;
         };
+        
+        // SEMPRE recarregar períodos do servidor após criar para garantir que o contador seja atualizado
+        // Fazer isso após um tempo para garantir que o período foi persistido
+        setTimeout(async () => {
+          console.log("🔄 [PeriodSelector] Recarregamento final de períodos para garantir sincronização do contador...");
+          const finalList = await loadPeriods();
+          if (finalList && finalList.length > 0) {
+            console.log(`✅ [PeriodSelector] Lista final recarregada: ${finalList.length} períodos - Contador deve mostrar ${finalList.length}`);
+            // O loadPeriods já atualiza o estado com setPeriods, então o contador será atualizado automaticamente
+          } else {
+            console.warn("⚠️ [PeriodSelector] Lista final vazia ou erro ao recarregar");
+          }
+        }, 3000);
         
         // Iniciar recarregamento
         reloadAndUpdate().then(success => {
@@ -321,6 +383,10 @@ function PeriodSelectorInner() {
             // Mesmo se falhar, tentar atualizar URL e forçar refresh
             router.replace(newUrl, { scroll: false });
             router.refresh();
+            // Recarregar períodos novamente após refresh
+            setTimeout(() => {
+              loadPeriods();
+            }, 1000);
           }
         });
         
