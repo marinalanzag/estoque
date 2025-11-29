@@ -126,15 +126,60 @@ export async function POST(req: NextRequest) {
 
     // Desativar todos os outros períodos ANTES de criar o novo
     console.log(`[periods/create] Desativando todos os períodos existentes...`);
+    
+    // Primeiro verificar quantos períodos estão ativos
+    const { data: activeBefore } = await supabaseAdmin
+      .from("periods")
+      .select("id, year, month")
+      .eq("is_active", true);
+    
+    const activeCount = activeBefore?.length || 0;
+    if (activeCount > 0) {
+      console.log(`[periods/create] Encontrados ${activeCount} períodos ativos antes da desativação:`, 
+        activeBefore?.map(p => `${p.year}/${p.month}`).join(", "));
+    }
+    
+    // Desativar apenas os que estão ativos (mais eficiente)
     const { error: deactivateError } = await supabaseAdmin
       .from("periods")
-      .update({ is_active: false });
+      .update({ is_active: false })
+      .eq("is_active", true);
 
     if (deactivateError) {
-      console.error("Erro ao desativar períodos:", deactivateError);
-      // Não vamos bloquear a criação se a desativação falhar, mas logamos o erro
+      console.error("❌ [periods/create] Erro ao desativar períodos:", deactivateError);
+      // Não vamos bloquear a criação, mas logamos o erro
     } else {
-      console.log(`[periods/create] ✅ Todos os períodos foram desativados`);
+      console.log(`[periods/create] ✅ ${activeCount} período(s) foram desativados`);
+    }
+
+    // VERIFICAR se realmente não há períodos ativos (garantia)
+    const { data: stillActive, error: verifyError } = await supabaseAdmin
+      .from("periods")
+      .select("id, year, month")
+      .eq("is_active", true);
+
+    if (verifyError) {
+      console.warn(`[periods/create] ⚠️ Erro ao verificar períodos ativos:`, verifyError);
+    } else if (stillActive && stillActive.length > 0) {
+      console.warn(
+        `[periods/create] ⚠️ AINDA HÁ ${stillActive.length} PERÍODOS ATIVOS APÓS DESATIVAÇÃO!`,
+        stillActive.map((p) => `${p.year}/${p.month}`)
+      );
+      
+      // Tentar desativar novamente (forçar)
+      const duplicateIds = stillActive.map((p) => p.id);
+      const { error: retryError } = await supabaseAdmin
+        .from("periods")
+        .update({ is_active: false })
+        .in("id", duplicateIds);
+      
+      if (retryError) {
+        console.error(`[periods/create] ❌ Erro ao desativar períodos duplicados na segunda tentativa:`, retryError);
+      } else {
+        console.log(`[periods/create] ✅ Períodos duplicados foram desativados na segunda tentativa`);
+      }
+    } else {
+      console.log(`[periods/create] ✅ Confirmação: Nenhum período ativo encontrado`);
     }
 
     // Preparar dados de inserção

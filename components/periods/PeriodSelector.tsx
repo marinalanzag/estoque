@@ -301,95 +301,200 @@ function PeriodSelectorInner() {
     );
   }
 
+  const monthNames = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+  ];
+
+  const formatPeriodDisplay = (period: Period) => {
+    const monthName = monthNames[period.month - 1] || `Mês ${period.month}`;
+    const label = period.label || `${monthName} ${period.year}`;
+    return label;
+  };
+
   return (
     <>
-      <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Período Ativo
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-5 mb-6 shadow-md">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          {/* Status do Período Ativo */}
+          <div className="flex-1 min-w-[300px]">
+            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+              Período de Trabalho Atual
             </label>
             {activePeriod ? (
-              <div className="flex items-center gap-3">
-                <span className="text-lg font-semibold text-blue-600">
-                  📅 {activePeriod.label || activePeriod.name}
-                </span>
-                <span className="text-xs text-gray-500">
-                  ({activePeriod.year}/{String(activePeriod.month).padStart(2, "0")})
-                </span>
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg border-2 border-blue-400 shadow-sm">
+                  <span className="text-2xl">📅</span>
+                  <div className="flex flex-col">
+                    <span className="text-xl font-bold text-blue-700">
+                      {formatPeriodDisplay(activePeriod)}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {activePeriod.year}/{String(activePeriod.month).padStart(2, "0")}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
+                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                  ATIVO
+                </div>
               </div>
             ) : (
-              <p className="text-sm text-orange-600 font-medium">
-                ⚠️ Nenhum período ativo. Crie ou selecione um período para começar.
-              </p>
+              <div className="flex items-center gap-2 bg-orange-50 border-2 border-orange-300 px-4 py-3 rounded-lg">
+                <span className="text-xl">⚠️</span>
+                <div>
+                  <p className="text-sm font-semibold text-orange-800">
+                    Nenhum período ativo
+                  </p>
+                  <p className="text-xs text-orange-600">
+                    Crie ou selecione um período para começar
+                  </p>
+                </div>
+              </div>
             )}
           </div>
-          <div className="flex gap-2 items-center">
-            <div className="flex items-center gap-2">
-            <select
-              key={`period-select-${periods.length}-${activePeriod?.id || 'none'}-${refreshKey}`}
-              value={activePeriod?.id || ""}
-              onChange={(e) => {
-                if (e.target.value) {
-                  handleActivatePeriod(e.target.value);
-                }
-              }}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            >
+
+          {/* Controles */}
+          <div className="flex gap-2 items-start flex-wrap">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                Trocar Período
+              </label>
+              <select
+                key={`period-select-${periods.length}-${activePeriod?.id || 'none'}-${refreshKey}`}
+                value={activePeriod?.id || ""}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleActivatePeriod(e.target.value);
+                  }
+                }}
+                className="px-4 py-2.5 border-2 border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white hover:border-blue-400 transition-colors min-w-[240px]"
+              >
                 <option value="">Selecionar período...</option>
                 {periods.length === 0 ? (
                   <option value="" disabled>Nenhum período disponível</option>
-                ) : (
-                  periods.map((period) => {
-                    const displayText = `${period.label || period.name || `${period.year}/${String(period.month).padStart(2, "0")}`} (${period.year}/${String(period.month).padStart(2, "0")})`;
-                    return (
-                      <option key={period.id} value={period.id}>
-                        {displayText}
-                      </option>
-                    );
-                  })
-                )}
+                ) : (() => {
+                  // Agrupar períodos por ano
+                  const groupedByYear = periods.reduce((acc, period) => {
+                    if (!acc[period.year]) {
+                      acc[period.year] = [];
+                    }
+                    acc[period.year].push(period);
+                    return acc;
+                  }, {} as Record<number, Period[]>);
+
+                  // Ordenar anos do mais recente para o mais antigo
+                  const sortedYears = Object.keys(groupedByYear)
+                    .map(Number)
+                    .sort((a, b) => b - a);
+
+                  const options: JSX.Element[] = [];
+                  
+                  sortedYears.forEach((year, yearIndex) => {
+                    const yearPeriods = groupedByYear[year].sort((a, b) => b.month - a.month);
+                    
+                    // Adicionar separador de ano se houver múltiplos anos
+                    if (sortedYears.length > 1 && yearIndex > 0) {
+                      options.push(
+                        <option key={`sep-${year}`} disabled>
+                          ─────────────────────
+                        </option>
+                      );
+                    }
+                    
+                    // Adicionar períodos do ano
+                    yearPeriods.forEach((period) => {
+                      const isActive = period.id === activePeriod?.id;
+                      const displayText = formatPeriodDisplay(period);
+                      options.push(
+                        <option 
+                          key={period.id} 
+                          value={period.id}
+                          style={isActive ? { fontWeight: 'bold', backgroundColor: '#dbeafe' } : {}}
+                        >
+                          {isActive ? "✓ " : ""}{displayText} {sortedYears.length > 1 ? `(${year})` : ''}
+                        </option>
+                      );
+                    });
+                  });
+                  
+                  return options;
+                })()}
               </select>
             </div>
+            
             <button
               onClick={() => {
                 setShowCreateModal(true);
               }}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
+              className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2"
+              title="Criar novo período"
             >
-              + Novo Período
+              <span className="text-lg">+</span>
+              Novo Período
             </button>
+            
             <button
               onClick={() => {
                 console.log("🔄 [PeriodSelector] Botão de refresh manual clicado");
-                loadPeriods();
+                loadPeriods().then(() => {
+                  loadActivePeriod();
+                });
               }}
-              className="px-3 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 text-sm font-medium"
+              className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium shadow-sm hover:shadow transition-all"
               title="Recarregar lista de períodos"
             >
-              🔄
+              <span className="text-lg">🔄</span>
             </button>
           </div>
         </div>
+
+        {/* Informação adicional */}
+        {periods.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-blue-200">
+            <div className="flex items-center justify-between text-xs text-gray-600">
+              <span>
+                Total de períodos cadastrados: <strong>{periods.length}</strong>
+              </span>
+              {activePeriod && (
+                <span>
+                  Criado em: {new Date(activePeriod.created_at).toLocaleDateString('pt-BR')}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal de criação */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              Criar Novo Período
-            </h2>
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl border-2 border-blue-200">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <span className="text-3xl">📅</span>
+                Criar Novo Período
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none"
+                title="Fechar"
+              >
+                ×
+              </button>
+            </div>
+            
             <form 
               onSubmit={(e) => {
                 console.log("🚀🚀🚀 [PeriodSelector] FORM SUBMIT EVENT DISPARADO!");
                 handleCreatePeriod(e);
               }} 
-              className="space-y-4"
+              className="space-y-5"
             >
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Ano *
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Ano <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
@@ -399,20 +504,21 @@ function PeriodSelectorInner() {
                   onChange={(e) =>
                     setNewPeriod({ ...newPeriod, year: parseInt(e.target.value) })
                   }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg font-medium"
                   required
                 />
               </div>
+              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Mês *
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Mês <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={newPeriod.month}
                   onChange={(e) =>
                     setNewPeriod({ ...newPeriod, month: parseInt(e.target.value) })
                   }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg font-medium bg-white"
                   required
                 >
                   {[
@@ -435,9 +541,10 @@ function PeriodSelectorInner() {
                   ))}
                 </select>
               </div>
+              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nome (opcional)
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Nome Personalizado <span className="text-gray-400 text-xs font-normal">(opcional)</span>
                 </label>
                 <input
                   type="text"
@@ -445,22 +552,42 @@ function PeriodSelectorInner() {
                   onChange={(e) =>
                     setNewPeriod({ ...newPeriod, name: e.target.value })
                   }
-                  placeholder="Deixe em branco para nome automático"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Ex: Período de Abertura ou deixe em branco"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  Se deixar em branco, será gerado automaticamente (ex: &quot;Janeiro 2024&quot;)
+                </p>
               </div>
-              <div className="flex gap-3 pt-4">
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
+                <p className="text-xs text-blue-800">
+                  <strong>⚠️ Atenção:</strong> Ao criar um novo período, todos os outros períodos serão automaticamente desativados. Este período será ativado imediatamente.
+                </p>
+              </div>
+              
+              <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
                   disabled={creating}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 font-medium"
+                  className="flex-1 px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-semibold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
                 >
-                  {creating ? "Criando..." : "Criar Período"}
+                  {creating ? (
+                    <>
+                      <span className="animate-spin">⏳</span>
+                      Criando...
+                    </>
+                  ) : (
+                    <>
+                      <span>✓</span>
+                      Criar Período
+                    </>
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 font-medium"
+                  className="px-5 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold transition-colors"
                 >
                   Cancelar
                 </button>
