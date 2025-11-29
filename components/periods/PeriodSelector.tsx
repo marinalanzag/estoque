@@ -54,6 +54,33 @@ function PeriodSelectorInner() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periods.length]); // Usar apenas o length para evitar loops
+  
+  // IMPORTANTE: Detectar quando o componente foi remontado após router.refresh()
+  // e garantir que os períodos sejam recarregados do servidor
+  useEffect(() => {
+    // Este efeito será executado toda vez que o componente for montado/remontado
+    // Se já tivermos períodos carregados mas o query param mudou, pode indicar
+    // que um novo período foi criado e precisamos recarregar
+    const periodParam = searchParams.get("period");
+    
+    if (periodParam && !loading) {
+      const match = periodParam.match(/^(\d{4})-(\d{1,2})$/);
+      if (match) {
+        const year = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10);
+        const periodExists = periods.find(p => p.year === year && p.month === month);
+        
+        if (!periodExists && periods.length > 0) {
+          console.log(`[PeriodSelector] ⚠️ Período do query param (${year}/${month}) não está na lista local (${periods.length} períodos). Forçando recarregamento...`);
+          // Aguardar um pouco e recarregar
+          setTimeout(() => {
+            loadPeriods().then(() => loadActivePeriod());
+          }, 500);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]); // Re-executar quando searchParams mudar (incluindo após router.refresh())
 
   // Recarregar períodos quando o query param period mudar (pode indicar novo período criado ou mudança de período)
   useEffect(() => {
@@ -634,7 +661,7 @@ function PeriodSelectorInner() {
           <div className="mt-4 pt-4 border-t border-blue-200">
             <div className="flex items-center justify-between text-xs text-gray-600">
               <span>
-                Total de períodos cadastrados: <strong>{periods.length}</strong>
+                Total de períodos cadastrados: <strong key={refreshKey}>{periods.length}</strong>
               </span>
               {activePeriod && (
                 <span>
