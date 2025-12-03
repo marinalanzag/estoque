@@ -6,6 +6,41 @@ import * as XLSX from "xlsx";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * Calcula o último dia do mês considerando anos bissextos
+ */
+function getLastDayOfMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+/**
+ * Formata data no formato DDMMAAAA
+ */
+function formatDateDDMMAAAA(year: number, month: number, day: number): string {
+  return `${String(day).padStart(2, "0")}${String(month).padStart(2, "0")}${year}`;
+}
+
+/**
+ * Formata número no formato N(19.6) - 13 inteiros + 6 decimais
+ */
+function formatNumber19_6(value: number): string {
+  return value.toFixed(6);
+}
+
+/**
+ * Formata número no formato N(19.2) - 17 inteiros + 2 decimais
+ */
+function formatNumber19_2(value: number): string {
+  return value.toFixed(2);
+}
+
+/**
+ * Formata número no formato N(17.2) - 13 inteiros + 2 decimais
+ */
+function formatNumber17_2(value: number): string {
+  return value.toFixed(2);
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { fileId: string } }
@@ -24,9 +59,38 @@ export async function GET(
       );
     }
 
+    // VALIDAÇÃO: periodId é obrigatório para gerar SPED
+    if (!periodId) {
+      return NextResponse.json(
+        { error: "period_id é obrigatório para gerar arquivo SPED. Informe o ID do período." },
+        { status: 400 }
+      );
+    }
+
     const format = searchParams.get("format") || "sped_txt";
     const removeZeros = searchParams.get("removeZeros") === "true";
     const removeNegatives = searchParams.get("removeNegatives") === "true";
+
+    // VALIDAÇÃO: Buscar período e validar se existe
+    const { data: period, error: periodError } = await supabaseAdmin
+      .from("periods")
+      .select("id, year, month")
+      .eq("id", periodId)
+      .single();
+
+    if (periodError || !period) {
+      return NextResponse.json(
+        { error: `Período não encontrado. ID informado: ${periodId}. Verifique se o período existe no sistema.` },
+        { status: 400 }
+      );
+    }
+
+    if (!period.year || !period.month) {
+      return NextResponse.json(
+        { error: `Período inválido: ano ou mês não informado. Período ID: ${periodId}` },
+        { status: 400 }
+      );
+    }
 
     // Buscar dados do inventário final
     const cookieImportIdsRaw =
@@ -42,7 +106,7 @@ export async function GET(
       xmlImportIds,
     });
 
-    // Aplicar filtros
+    // Aplicar filtros ANTES de calcular valores
     let filteredItems = items;
     if (removeZeros) {
       filteredItems = filteredItems.filter((item) => item.estoque_final !== 0);
@@ -59,12 +123,14 @@ export async function GET(
       .single();
 
     const fileName = spedFile?.name || fileId;
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
+
+    // Calcular data do último dia do mês do período (formato DDMMAAAA)
+    const lastDay = getLastDayOfMonth(period.year, period.month);
+    const dtInv = formatDateDDMMAAAA(period.year, period.month, lastDay);
 
     // Gerar arquivo conforme formato
     if (format === "sped_txt") {
-      return generateSPEDFile(filteredItems, fileName, dateStr);
+      return generateSPEDFile(filteredItems, fileName, dtInv, periodId);
     } else if (format === "xlsx") {
       return generateXLSXFile(filteredItems, fileName);
     } else if (format === "csv") {
@@ -87,43 +153,127 @@ export async function GET(
 function generateSPEDFile(
   items: any[],
   fileName: string,
-  dateStr: string
+  dtInv: string,
+  periodId: string
 ): NextResponse {
   const lines: string[] = [];
+  const errors: string[] = [];
 
-  // Calcular valor total do inventário
+  // VALIDAÇÃO: Verificar se há itens para gerar
+  if (items.length === 0) {
+    return NextResponse.json(
+      { error: "Nenhum item encontrado para gerar o arquivo SPED. Verifique os filtros aplicados." },
+      { status: 400 }
+    );
+  }
+
+  // Validar cada item antes de processar
+  items.forEach((item, index) => {
+    // VALIDAÇÃO: Código do item obrigatório e normalizado
+    if (!item.cod_item || item.cod_item.trim() === "") {
+      errors.push(`Item na posição ${index + 1}: Código do item (COD_ITEM) não informado.`);
+      return;
+    }
+
+    // VALIDAÇÃO: Código deve ter 6 dígitos (normalizado)
+    if (item.cod_item.length !== 6 || !/^\d{6}$/.test(item.cod_item)) {
+      errors.push(
+        `Item ${item.cod_item} (posição ${index + 1}): Código do item deve ter exatamente 6 dígitos numéricos. Código atual: "${item.cod_item}" (${item.cod_item.length} caracteres).`
+      );
+      return;
+    }
+
+    // VALIDAÇÃO: Unidade de medida obrigatória
+    if (!item.unid || item.unid.trim() === "") {
+      errors.push(
+        `Item ${item.cod_item} (posição ${index + 1}): Unidade de medida (UNID) não informada. Este item não possui registro no Bloco 020/0220 do SPED ou unidade não foi cadastrada.`
+      );
+      return;
+    }
+
+    // VALIDAÇÃO: Quantidade deve ser um número válido
+    if (item.estoque_final === null || item.estoque_final === undefined || isNaN(item.estoque_final)) {
+      errors.push(
+        `Item ${item.cod_item} (posição ${index + 1}): Quantidade (QTD) inválida ou não informada.`
+      );
+      return;
+    }
+
+    // VALIDAÇÃO: Valor unitário deve ser um número válido
+    if (item.unit_cost === null || item.unit_cost === undefined || isNaN(item.unit_cost)) {
+      errors.push(
+        `Item ${item.cod_item} (posição ${index + 1}): Valor unitário (VL_UNIT) inválido ou não informado.`
+      );
+      return;
+    }
+
+    // VALIDAÇÃO: Valor do item deve ser um número válido
+    if (item.valor_estoque_final === null || item.valor_estoque_final === undefined || isNaN(item.valor_estoque_final)) {
+      errors.push(
+        `Item ${item.cod_item} (posição ${index + 1}): Valor do item (VL_ITEM) inválido ou não informado.`
+      );
+      return;
+    }
+  });
+
+  // Se houver erros de validação, retornar todos de uma vez
+  if (errors.length > 0) {
+    return NextResponse.json(
+      {
+        error: "Erros de validação encontrados nos itens do inventário:",
+        details: errors,
+      },
+      { status: 400 }
+    );
+  }
+
+  // Calcular valor total do inventário (VL_INV) - soma dos VL_ITEM dos itens filtrados
   const valorTotal = items.reduce(
-    (acc, item) => acc + item.valor_estoque_final,
+    (acc, item) => acc + (item.valor_estoque_final || 0),
     0
   );
 
+  // Formatar VL_INV: N(17.2) - 13 inteiros + 2 decimais, ponto como decimal
+  const vlInv = formatNumber17_2(valorTotal);
+
   // Cabeçalho (H005)
   // |H005|DT_INV|VL_INV|MOT_INV|
-  lines.push(
-    `|H005|${dateStr}|${valorTotal.toFixed(2).replace(".", ",")}|INVENTARIO FINAL AJUSTADO|`
-  );
+  // DT_INV: DDMMAAAA
+  // VL_INV: N(17.2) com ponto como decimal
+  // MOT_INV: sempre "01"
+  lines.push(`|H005|${dtInv}|${vlInv}|01|`);
 
   // Itens (H010)
-  // |H010|COD_ITEM|UNID|QTD|VL_UNIT|VL_ITEM|
+  // |H010|COD_ITEM|UNID|QTD|VL_UNIT|VL_ITEM|IND_PROP|COD_PART|TXT_COMP|COD_CTA|VL_ITEM_IR|
   items.forEach((item) => {
-    const codItem = item.cod_item;
-    const unid = item.unid || "UN";
-    const qtd = item.estoque_final.toFixed(3).replace(".", ",");
-    const vlUnit = item.unit_cost.toFixed(2).replace(".", ",");
-    const vlItem = item.valor_estoque_final.toFixed(2).replace(".", ",");
+    const codItem = item.cod_item; // Já normalizado com 6 dígitos
+    const unid = item.unid; // Já validado acima
+    const qtd = formatNumber19_6(item.estoque_final); // N(19.6) - 6 decimais, ponto
+    const vlUnit = formatNumber19_6(item.unit_cost); // N(19.6) - 6 decimais, ponto
+    const vlItem = formatNumber19_2(item.valor_estoque_final); // N(19.2) - 2 decimais, ponto
+    const indProp = "0"; // Sempre 0
+    const codPart = ""; // Vazio
+    const txtComp = ""; // Vazio
+    const codCta = "281"; // Sempre 281
+    const vlItemIR = "0,00"; // Sempre 0,00 (vírgula como decimal)
 
-    lines.push(`|H010|${codItem}|${unid}|${qtd}|${vlUnit}|${vlItem}|`);
+    lines.push(
+      `|H010|${codItem}|${unid}|${qtd}|${vlUnit}|${vlItem}|${indProp}|||${codCta}|${vlItemIR}|`
+    );
   });
 
-  // Rodapé (H990) - contagem de registros
+  // Rodapé (H990) - contagem de registros do bloco H (incluindo o próprio H990)
   lines.push(`|H990|${lines.length + 1}|`);
 
   const content = lines.join("\n");
 
+  // Formatar nome do arquivo com data no formato DDMMAAAA
+  const dateForFilename = dtInv; // Já está em DDMMAAAA
+
   return new NextResponse(content, {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Content-Disposition": `attachment; filename="inventario_final_${fileName}_${dateStr}.txt"`,
+      "Content-Disposition": `attachment; filename="inventario_final_${fileName}_${dateForFilename}.txt"`,
     },
   });
 }
