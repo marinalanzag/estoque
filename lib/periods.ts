@@ -385,13 +385,41 @@ export async function getStockImportsForPeriod(
   total_value: number | null; 
   created_at: string; 
   is_base: boolean;
+  period_id: string | null;
 }>> {
   const supabaseAdmin = getSupabaseAdmin();
 
   const { data, error } = await supabaseAdmin
     .from("stock_initial_imports")
-    .select("id, label, total_items, total_value, created_at, is_base")
+    .select("id, label, total_items, total_value, created_at, is_base, period_id")
     .eq("period_id", periodId)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    return [];
+  }
+
+  return data;
+}
+
+/**
+ * Busca todas as importações de estoque inicial não vinculadas a nenhum período
+ */
+export async function getUnlinkedStockImports(): Promise<Array<{ 
+  id: string; 
+  label: string | null; 
+  total_items: number | null; 
+  total_value: number | null; 
+  created_at: string; 
+  is_base: boolean;
+  period_id: string | null;
+}>> {
+  const supabaseAdmin = getSupabaseAdmin();
+
+  const { data, error } = await supabaseAdmin
+    .from("stock_initial_imports")
+    .select("id, label, total_items, total_value, created_at, is_base, period_id")
+    .is("period_id", null)
     .order("created_at", { ascending: false });
 
   if (error || !data) {

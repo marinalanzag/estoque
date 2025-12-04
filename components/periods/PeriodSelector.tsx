@@ -275,57 +275,42 @@ function PeriodSelectorInner() {
 
   const handleCreatePeriod = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("🚀🚀🚀 [PeriodSelector] handleCreatePeriod chamado com:", newPeriod);
-    console.log("🚀 [PeriodSelector] Dados do período:", JSON.stringify(newPeriod));
     setCreating(true);
     try {
-      console.log("🚀 [PeriodSelector] Fazendo requisição para /api/periods/create");
       const res = await fetch("/api/periods/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newPeriod),
-        cache: "no-store", // Forçar não usar cache
+        cache: "no-store",
       });
       
-      console.log("🚀 [PeriodSelector] Resposta recebida, status:", res.status);
       const data = await res.json();
       
-      console.log("🚀 [PeriodSelector] Resposta da criação:", data);
-      
       if (data.ok && data.period) {
-        console.log("✅ [PeriodSelector] Período criado com sucesso:", data.period);
         const newPeriodData = data.period;
         
-        // Fechar modal PRIMEIRO
+        // Fechar modal
         setShowCreateModal(false);
         setNewPeriod({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, name: "" });
         
-        // ADICIONAR PERÍODO À LISTA LOCALMENTE PRIMEIRO (otimistic update)
+        // Adicionar período à lista localmente (otimistic update)
         setPeriods(prev => {
           const exists = prev.find(p => p.id === newPeriodData.id);
           if (!exists) {
-            const newList = [newPeriodData, ...prev].sort((a, b) => {
+            return [newPeriodData, ...prev].sort((a, b) => {
               if (b.year !== a.year) return b.year - a.year;
               return b.month - a.month;
             });
-            console.log(`[PeriodSelector] ✅ Período adicionado à lista local: ${newPeriodData.year}/${newPeriodData.month}`);
-            console.log(`[PeriodSelector] 📊 Contador atualizado: ${prev.length} → ${newList.length} períodos`);
-            return newList;
           }
           return prev;
         });
         
-        // DEFINIR COMO ATIVO IMEDIATAMENTE
+        // Definir como ativo
         setActivePeriod(newPeriodData);
         setRefreshKey(prev => prev + 1);
         
-        // FORÇAR atualização do contador imediatamente após adicionar localmente
-        console.log(`[PeriodSelector] 🔄 Forçando atualização do contador após adicionar período localmente`);
-        
-        // Atualizar URL e forçar revalidação das páginas server-side
+        // Atualizar URL
         const periodParam = `${newPeriodData.year}-${newPeriodData.month}`;
-        
-        // Construir nova URL com query params
         const params = new URLSearchParams();
         if (searchParams) {
           searchParams.forEach((value, key) => {
@@ -337,130 +322,28 @@ function PeriodSelectorInner() {
         params.set("period", periodParam);
         const newUrl = `${pathname}?${params.toString()}`;
         
-        // RECARREGAR DO SERVIDOR PRIMEIRO antes de atualizar URL
-        console.log("🔄 [PeriodSelector] Recarregando lista do servidor...");
+        // Aguardar um pouco para garantir que o período foi salvo no banco
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Função para recarregar e atualizar
-        const reloadAndUpdate = async (retries = 5) => {
-          for (let i = 0; i < retries; i++) {
-            try {
-              // Aguardar um pouco para garantir que o período foi salvo no banco
-              const delay = 500 * (i + 1);
-              console.log(`⏳ [PeriodSelector] Tentativa ${i + 1}/${retries}: Aguardando ${delay}ms antes de recarregar...`);
-              await new Promise(resolve => setTimeout(resolve, delay));
-              
-              // Recarregar períodos do servidor
-              const updatedPeriodsList = await loadPeriods();
-              
-              if (!updatedPeriodsList || updatedPeriodsList.length === 0) {
-                console.warn(`⚠️ [PeriodSelector] Lista vazia retornada na tentativa ${i + 1}`);
-                continue;
-              }
-              
-              console.log(`📊 [PeriodSelector] Lista recarregada: ${updatedPeriodsList.length} períodos encontrados`);
-              
-              // Verificar se o período está na lista
-              const foundPeriod = updatedPeriodsList.find(p => p.id === newPeriodData.id);
-              if (foundPeriod) {
-                console.log(`✅ [PeriodSelector] Período confirmado no servidor após ${i + 1} tentativa(s)`);
-                console.log(`📋 [PeriodSelector] Total de períodos no servidor: ${updatedPeriodsList.length}`);
-                
-                // Atualizar estado com dados do servidor (garantir que o contador seja atualizado)
-                setPeriods(updatedPeriodsList);
-                setActivePeriod(foundPeriod);
-                setRefreshKey(prev => prev + 1);
-                
-                // IMPORTANTE: Atualizar estado ANTES de fazer router.refresh()
-                // para que o contador seja atualizado antes do refresh remontar o componente
-                console.log(`[PeriodSelector] ✅ Estado atualizado com ${updatedPeriodsList.length} períodos ANTES do refresh`);
-                
-                // Aguardar um pouco para garantir que React processou a atualização do estado
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                // Agora atualizar URL e forçar refresh das páginas server-side
-                console.log("🔄 [PeriodSelector] Forçando revalidação das páginas server-side...");
-                
-                // Usar router.replace para atualizar URL e forçar revalidação
-                router.replace(newUrl, { scroll: false });
-                
-                // Aguardar antes de fazer refresh para garantir que URL foi atualizada
-                await new Promise(resolve => setTimeout(resolve, 200));
-                
-                // Forçar refresh do router para atualizar páginas server-side
-                router.refresh();
-                
-                // APÓS o refresh, recarregar períodos novamente para garantir sincronização
-                // O router.refresh() pode remontar o componente, então precisamos garantir
-                // que os períodos sejam recarregados quando o componente remontar
-                setTimeout(async () => {
-                  console.log("🔄 [PeriodSelector] Recarregando períodos após router.refresh()...");
-                  await loadPeriods();
-                }, 1000);
-                
-                return true;
-              } else {
-                console.warn(`⚠️ [PeriodSelector] Período ${newPeriodData.year}/${newPeriodData.month} não encontrado na lista após tentativa ${i + 1}`);
-              }
-              
-              if (i < retries - 1) {
-                console.log(`⏳ [PeriodSelector] Tentando novamente em ${500 * (i + 2)}ms...`);
-              }
-            } catch (error) {
-              console.error(`❌ [PeriodSelector] Erro na tentativa ${i + 1}:`, error);
-              if (i < retries - 1) {
-                await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
-              }
-            }
-          }
-          console.warn(`⚠️ [PeriodSelector] Não foi possível encontrar período após ${retries} tentativas`);
-          return false;
-        };
+        // Recarregar períodos do servidor para garantir sincronização
+        await loadPeriods();
+        await loadActivePeriod();
         
-        // SEMPRE recarregar períodos do servidor após criar para garantir que o contador seja atualizado
-        // IMPORTANTE: Fazer múltiplos recarregamentos para garantir sincronização
-        // mesmo se o router.refresh() remontar o componente
-        const recarregamentos = [1000, 2500, 4000]; // 1s, 2.5s, 4s
+        // Atualizar URL e forçar refresh das páginas server-side
+        router.replace(newUrl, { scroll: false });
+        router.refresh();
         
-        recarregamentos.forEach((delay, index) => {
-          setTimeout(async () => {
-            console.log(`🔄 [PeriodSelector] Recarregamento ${index + 1}/${recarregamentos.length} após ${delay}ms...`);
-            const finalList = await loadPeriods();
-            if (finalList && finalList.length > 0) {
-              console.log(`✅ [PeriodSelector] Lista recarregada (${index + 1}): ${finalList.length} períodos - Contador deve mostrar ${finalList.length}`);
-              // Forçar atualização do contador
-              setRefreshKey(prev => prev + 1);
-            } else {
-              console.warn(`⚠️ [PeriodSelector] Lista vazia no recarregamento ${index + 1}`);
-            }
-          }, delay);
-        });
-        
-        // Iniciar recarregamento
-        reloadAndUpdate().then(success => {
-          if (!success) {
-            console.warn("⚠️ [PeriodSelector] Não foi possível confirmar período no servidor, forçando refresh mesmo assim...");
-            // Mesmo se falhar, tentar atualizar URL e forçar refresh
-            router.replace(newUrl, { scroll: false });
-            router.refresh();
-            // Recarregar períodos novamente após refresh
-            setTimeout(() => {
-              loadPeriods();
-            }, 1000);
-          }
-        });
-        
-        // Mostrar mensagem
-        const message = data.message || "Período criado com sucesso!";
-        alert(`✅ ${message}\n\nA página será atualizada automaticamente para refletir o novo período.`);
+        // Mostrar mensagem de sucesso
+        const message = data.message || "Período criado e ativado com sucesso!";
+        alert(`✅ ${message}`);
       } else {
         const errorMsg = data.error || "Erro ao criar período";
-        console.error("[PeriodSelector] Erro na API:", errorMsg);
-        alert(`Erro ao criar período: ${errorMsg}`);
+        alert(`❌ Erro: ${errorMsg}`);
       }
     } catch (err) {
       console.error("[PeriodSelector] Erro ao criar período:", err);
       const errorMsg = err instanceof Error ? err.message : "Erro desconhecido";
-      alert(`Erro ao criar período: ${errorMsg}`);
+      alert(`❌ Erro ao criar período: ${errorMsg}`);
     } finally {
       setCreating(false);
     }

@@ -228,12 +228,22 @@ export async function POST(req: NextRequest) {
       return acc + unit * record.qtd;
     }, 0);
 
-    // Buscar período ativo
-    const { data: activePeriod } = await supabaseAdmin
+    // Buscar período ativo (usar maybeSingle para não falhar se não houver)
+    const { data: activePeriod, error: periodError } = await supabaseAdmin
       .from("periods")
       .select("id")
       .eq("is_active", true)
-      .single();
+      .maybeSingle();
+    
+    if (periodError) {
+      console.warn("[stock-initial/import] Erro ao buscar período ativo:", periodError);
+    }
+    
+    if (!activePeriod) {
+      console.warn("[stock-initial/import] ⚠️ Nenhum período ativo encontrado. O import será criado sem vinculação ao período.");
+    } else {
+      console.log("[stock-initial/import] ✅ Período ativo encontrado:", activePeriod.id);
+    }
 
     // Verificar se já existe estoque base para o período
     let isBase = false;

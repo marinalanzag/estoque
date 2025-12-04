@@ -290,3 +290,6 @@ Use este checklist para diagnosticar rapidamente:
 
 Com essas informações, poderemos identificar exatamente o que está impedindo a criação do período.
 
+
+
+

@@ -279,3 +279,6 @@ O inventário final é o estoque consolidado menos os ajustes de baixa positiva 
 
 
 
+
+
+

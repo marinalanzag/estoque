@@ -788,3 +788,6 @@ A query em `inventory-data/route.ts` é a mais segura. Considerar usar esse padr
 
 
 
+
+
+

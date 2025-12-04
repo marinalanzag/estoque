@@ -7,9 +7,11 @@ import {
   getXmlImportsForPeriod,
   getStockImportsForPeriod,
   getBaseXmlImportsForPeriod,
+  getUnlinkedStockImports,
 } from "@/lib/periods";
 import Link from "next/link";
 import SetBaseButton from "@/components/periods/SetBaseButton";
+import LinkPeriodButton from "@/components/periods/LinkPeriodButton";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +57,7 @@ export default async function ConfiguracaoPage({
     baseStockId,
     baseSpedId,
     stockImports,
+    unlinkedStockImports,
     spedFiles,
     xmlImports,
     baseXmlIds,
@@ -62,6 +65,7 @@ export default async function ConfiguracaoPage({
     getBaseStockImportForPeriod(activePeriod.id),
     getBaseSpedFileForPeriod(activePeriod.id),
     getStockImportsForPeriod(activePeriod.id),
+    getUnlinkedStockImports(),
     getSpedFilesForPeriod(activePeriod.id),
     getXmlImportsForPeriod(activePeriod.id),
     getBaseXmlImportsForPeriod(activePeriod.id),
@@ -174,7 +178,7 @@ export default async function ConfiguracaoPage({
             {stockImports.length > 0 && (
               <div className="mt-4 space-y-2">
                 <p className="text-sm font-medium text-gray-700">
-                  Importações disponíveis:
+                  Importações vinculadas ao período:
                 </p>
                 {stockImports.map((stock) => (
                   <div
@@ -187,6 +191,9 @@ export default async function ConfiguracaoPage({
                       </span>
                       <p className="text-sm text-gray-600 mt-1">
                         {new Date(stock.created_at).toLocaleDateString("pt-BR")}
+                        {stock.total_items && (
+                          <> • {stock.total_items} itens</>
+                        )}
                       </p>
                     </div>
                     <SetBaseButton
@@ -194,6 +201,36 @@ export default async function ConfiguracaoPage({
                       id={stock.id}
                       isBase={false}
                       label="Marcar como base"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+            {unlinkedStockImports.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-medium text-gray-700">
+                  Importações não vinculadas (disponíveis para vincular):
+                </p>
+                {unlinkedStockImports.map((stock) => (
+                  <div
+                    key={stock.id}
+                    className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-200"
+                  >
+                    <div>
+                      <span className="font-medium text-gray-900">
+                        {stock.label || "Estoque inicial"}
+                      </span>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {new Date(stock.created_at).toLocaleDateString("pt-BR")}
+                        {stock.total_items && (
+                          <> • {stock.total_items} itens</>
+                        )}
+                      </p>
+                    </div>
+                    <LinkPeriodButton
+                      type="stock"
+                      id={stock.id}
+                      label="Vincular ao Período"
                     />
                   </div>
                 ))}

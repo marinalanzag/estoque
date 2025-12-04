@@ -135,3 +135,5 @@ if (stillActive && stillActive.length > 0) {
 Escolher qual solução implementar ou combinar múltiplas.
 
 
+
+

@@ -351,7 +351,12 @@ export default async function MovimentacoesSaidasPage({
         exitItems.push(...batchItems);
       }
     } else {
-      console.log(`[saidas/page] Nenhuma importação encontrada para o período ativo`);
+      if (activePeriod) {
+        console.log(`[saidas/page] ⚠️ Nenhuma importação de XML vinculada ao período ativo (${activePeriod.id})`);
+        console.log(`[saidas/page] 💡 Dica: Verifique se os XMLs foram vinculados ao período na página de configuração.`);
+      } else {
+        console.log(`[saidas/page] ⚠️ Nenhum período ativo. XMLs devem estar vinculados a um período para aparecer.`);
+      }
     }
   }
 
@@ -489,11 +494,34 @@ export default async function MovimentacoesSaidasPage({
       ) : (
         <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
           <p className="text-gray-600">
-            Nenhum item de saída encontrado para este arquivo SPED.
+            Nenhum item de saída encontrado.
           </p>
-          <p className="text-sm text-gray-500 mt-2">
-            Importe XMLs de venda para visualizar as saídas.
-          </p>
+          <div className="mt-4 space-y-2">
+            {!activePeriod ? (
+              <p className="text-sm text-orange-600">
+                ⚠️ Nenhum período ativo selecionado. Selecione um período para visualizar as saídas.
+              </p>
+            ) : groupedXmlImports.length === 0 ? (
+              <>
+                <p className="text-sm text-orange-600">
+                  ⚠️ Nenhuma importação de XML vinculada ao período ativo.
+                </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Importe XMLs de venda e vincule-os ao período na página de configuração.
+                </p>
+                <Link
+                  href="/sped/upload-xml-sales"
+                  className="inline-block mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
+                >
+                  Importar XMLs
+                </Link>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500 mt-2">
+                Importe XMLs de venda ou selecione uma importação existente para visualizar as saídas.
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>

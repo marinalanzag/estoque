@@ -48,3 +48,6 @@ Após o push, acesse:
 - O script verifica se há alterações antes de tentar fazer commit
 - Se houver erro, o script para e mostra a mensagem de erro
 
+
+
+

@@ -120,12 +120,22 @@ export async function POST(req: NextRequest) {
     const text = await file.text();
     const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
 
-  // Buscar período ativo
-  const { data: activePeriod } = await supabaseAdmin
+  // Buscar período ativo (usar maybeSingle para não falhar se não houver)
+  const { data: activePeriod, error: periodError } = await supabaseAdmin
     .from("periods")
     .select("id")
     .eq("is_active", true)
-    .single();
+    .maybeSingle();
+  
+  if (periodError) {
+    console.warn("[sped/import] Erro ao buscar período ativo:", periodError);
+  }
+  
+  if (!activePeriod) {
+    console.warn("[sped/import] ⚠️ Nenhum período ativo encontrado. O arquivo SPED será criado sem vinculação ao período.");
+  } else {
+    console.log("[sped/import] ✅ Período ativo encontrado:", activePeriod.id);
+  }
 
   const { data: spedFile, error: spedError } = await supabaseAdmin
     .from("sped_files")

@@ -194,3 +194,6 @@ Os cards de resumo são calculados no final da função `getInventoryFinalData()
 
 
 
+
+
+

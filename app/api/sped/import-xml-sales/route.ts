@@ -347,12 +347,22 @@ async function processXMLsInBackground(
   let totalXMLsProcessados = 0;
   let totalItensInseridos = 0;
   
-  // Buscar período ativo
-  const { data: activePeriod } = await supabaseAdmin
+  // Buscar período ativo (usar maybeSingle para não falhar se não houver)
+  const { data: activePeriod, error: periodError } = await supabaseAdmin
     .from("periods")
     .select("id")
     .eq("is_active", true)
-    .single();
+    .maybeSingle();
+  
+  if (periodError) {
+    console.warn("[import-xml-sales] Erro ao buscar período ativo:", periodError);
+  }
+  
+  if (!activePeriod) {
+    console.warn("[import-xml-sales] ⚠️ Nenhum período ativo encontrado. O import será criado sem vinculação ao período.");
+  } else {
+    console.log("[import-xml-sales] ✅ Período ativo encontrado:", activePeriod.id);
+  }
 
   // Criar registro de importação
   const { data: importRecord, error: importError } = await supabaseAdmin

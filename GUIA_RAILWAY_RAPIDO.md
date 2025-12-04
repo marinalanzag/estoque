@@ -133,3 +133,6 @@ Toda vez que você fizer `git push`, o Railway fará deploy automático.
 - **Logs do Projeto**: Dashboard → seu projeto → Deployments → View Logs
 - **Status do Serviço**: https://status.railway.app
 
+
+
+

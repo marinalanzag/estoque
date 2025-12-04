@@ -291,3 +291,6 @@ Se tiver problemas com qualquer plataforma:
 
 Escolha a plataforma que prefere e siga os passos. O Railway é o mais recomendado por ser o mais simples e confiável para Next.js!
 
+
+
+

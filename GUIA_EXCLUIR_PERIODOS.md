@@ -97,3 +97,5 @@ Todos os registros devem continuar existindo, apenas sem vínculo com períodos.
 
 **Precisa de ajuda?** Execute primeiro o script de verificação (`delete_all_periods.sql`) para ver o que será excluído antes de executar o DELETE.
 
+
+

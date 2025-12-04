@@ -106,3 +106,5 @@ FROM public.product_catalog_imports;
 --   COUNT(*) FILTER (WHERE period_id IS NULL) as sem_period_id
 -- FROM public.product_catalog_imports;
 
+
+
