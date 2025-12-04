@@ -136,15 +136,21 @@ function PeriodSelectorInner() {
   const loadPeriods = async () => {
     try {
       setLoading(true);
+      // LIMPAR estado local antes de carregar (garantir dados frescos)
+      setPeriods([]);
+      
       // Adicionar timestamp para evitar cache
       const timestamp = Date.now();
       console.log(`[PeriodSelector] 🔄 Carregando períodos... (timestamp: ${timestamp})`);
+      console.log(`[PeriodSelector] 🧹 Estado local limpo antes de carregar`);
       
-      const res = await fetch(`/api/periods/list?t=${timestamp}`, {
+      const res = await fetch(`/api/periods/list?t=${timestamp}&_=${Date.now()}`, {
         cache: "no-store",
+        method: "GET",
         headers: {
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
           'Pragma': 'no-cache',
+          'Expires': '0',
         },
       });
       
@@ -158,14 +164,28 @@ function PeriodSelectorInner() {
       console.log("[PeriodSelector] 📦 Resposta da API /api/periods/list:", data);
       
       if (data.ok && data.periods) {
-        const periodsList = (data.periods || []) as Period[];
-        console.log(`[PeriodSelector] ✅ Carregados ${periodsList.length} períodos do servidor`);
+        let periodsList = (data.periods || []) as Period[];
+        
+        // VALIDAÇÃO: Filtrar períodos inválidos antes de atualizar o estado
+        periodsList = periodsList.filter(p => {
+          if (!p || !p.id || !p.year || !p.month) {
+            console.warn(`[PeriodSelector] ⚠️ Período inválido filtrado:`, p);
+            return false;
+          }
+          if (p.month < 1 || p.month > 12) {
+            console.warn(`[PeriodSelector] ⚠️ Período com mês inválido filtrado: ${p.year}/${p.month}`);
+            return false;
+          }
+          return true;
+        });
+        
+        console.log(`[PeriodSelector] ✅ Carregados ${periodsList.length} períodos válidos do servidor (de ${data.periods?.length || 0} totais)`);
         console.log(`[PeriodSelector] 📊 Count na resposta: ${data.count || 'não fornecido'}`);
-        console.log(`[PeriodSelector] 📋 Lista de períodos:`, 
+        console.log(`[PeriodSelector] 📋 Lista de períodos válidos:`, 
           periodsList.map(p => `${p.year}/${String(p.month).padStart(2, '0')} - ${p.name || 'sem nome'} (ativo: ${p.is_active}, id: ${p.id?.substring(0, 8)}...)`));
         
-        // SEMPRE atualizar a lista com os dados do servidor (substituir completamente, não fazer merge)
-        console.log(`[PeriodSelector] 🔄 Atualizando estado: de ${periods.length} para ${periodsList.length} períodos`);
+        // SEMPRE substituir completamente o estado (não fazer merge)
+        console.log(`[PeriodSelector] 🔄 Substituindo estado local com ${periodsList.length} períodos válidos do servidor`);
         setPeriods(periodsList);
         
         // Forçar atualização do select após carregar períodos
@@ -224,22 +244,35 @@ function PeriodSelectorInner() {
         setPeriods(prev => {
           const exists = prev.find(p => p.id === activeFromServer.id);
           if (!exists) {
-            console.log(`[PeriodSelector] Período ativo não estava na lista. Adicionando...`);
+            console.log(`[PeriodSelector] ⚠️ Período ativo (${activeFromServer.year}/${activeFromServer.month}) não estava na lista. Adicionando...`);
             const newList = [activeFromServer, ...prev].sort((a, b) => {
               if (b.year !== a.year) return b.year - a.year;
               return b.month - a.month;
             });
             setRefreshKey(prev => prev + 1);
+            console.log(`[PeriodSelector] ✅ Período ativo adicionado à lista. Total: ${newList.length} períodos`);
             return newList;
+          } else {
+            // Atualizar período existente se houver mudanças (especialmente is_active)
+            const updated = prev.map(p => {
+              if (p.id === activeFromServer.id) {
+                // Atualizar com dados do servidor (fonte de verdade)
+                return activeFromServer;
+              }
+              // Se for outro período, manter como está mas verificar se não deveria estar ativo
+              if (p.is_active && p.id !== activeFromServer.id) {
+                console.log(`[PeriodSelector] ⚠️ Período ${p.year}/${p.month} está marcado como ativo mas não é o período ativo. Será atualizado.`);
+                return { ...p, is_active: false };
+              }
+              return p;
+            });
+            const hasChanges = JSON.stringify(prev) !== JSON.stringify(updated);
+            if (hasChanges) {
+              console.log(`[PeriodSelector] Período ativo foi atualizado na lista.`);
+              setRefreshKey(prev => prev + 1);
+            }
+            return updated;
           }
-          // Atualizar período existente se houver mudanças (especialmente is_active)
-          const updated = prev.map(p => p.id === activeFromServer.id ? activeFromServer : p);
-          const hasChanges = JSON.stringify(prev) !== JSON.stringify(updated);
-          if (hasChanges) {
-            console.log(`[PeriodSelector] Período ativo foi atualizado na lista.`);
-            setRefreshKey(prev => prev + 1);
-          }
-          return updated;
         });
         
         setRefreshKey(prev => prev + 1);

@@ -32,23 +32,36 @@ export async function GET(req: NextRequest) {
       throw new Error(`Erro ao buscar períodos: ${error.message}`);
     }
 
-    const periodsList = periods || [];
+    let periodsList = periods || [];
     
-    console.log(`[periods/list] ✅ Query retornou ${periodsList.length} períodos`);
+    // VALIDAÇÃO: Filtrar períodos inválidos ou sem dados essenciais
+    periodsList = periodsList.filter(p => {
+      if (!p || !p.id || !p.year || !p.month) {
+        console.warn(`[periods/list] ⚠️ Período inválido filtrado:`, p);
+        return false;
+      }
+      if (p.month < 1 || p.month > 12) {
+        console.warn(`[periods/list] ⚠️ Período com mês inválido filtrado: ${p.year}/${p.month}`);
+        return false;
+      }
+      return true;
+    });
+    
+    console.log(`[periods/list] ✅ Query retornou ${periodsList.length} períodos válidos (de ${periods?.length || 0} totais)`);
     console.log(`[periods/list] 📊 Count da query: ${queryCount || 'não disponível'}`);
     console.log(`[periods/list] 📊 Count do banco (head query): ${count || 'não disponível'}`);
     
     // Verificar se o número retornado corresponde ao count
     if (queryCount !== null && queryCount !== undefined && periodsList.length !== queryCount) {
-      console.warn(`[periods/list] ⚠️ DISCREPÂNCIA: Count da query (${queryCount}) diferente do retornado (${periodsList.length})`);
+      console.warn(`[periods/list] ⚠️ DISCREPÂNCIA: Count da query (${queryCount}) diferente do retornado válido (${periodsList.length})`);
     }
     if (count !== null && count !== undefined && periodsList.length !== count) {
-      console.warn(`[periods/list] ⚠️ DISCREPÂNCIA: Count do banco (${count}) diferente do retornado (${periodsList.length})`);
+      console.warn(`[periods/list] ⚠️ DISCREPÂNCIA: Count do banco (${count}) diferente do retornado válido (${periodsList.length})`);
     }
     
     // Log detalhado dos períodos retornados
     if (periodsList.length > 0) {
-      console.log(`[periods/list] 📋 Períodos retornados:`, periodsList.map(p => ({
+      console.log(`[periods/list] 📋 Períodos válidos retornados:`, periodsList.map(p => ({
         id: p.id?.substring(0, 8) + '...',
         year: p.year,
         month: p.month,
@@ -58,7 +71,7 @@ export async function GET(req: NextRequest) {
         created_at: p.created_at,
       })));
     } else {
-      console.warn(`[periods/list] ⚠️ Nenhum período retornado! Count do banco: ${count || 0}`);
+      console.warn(`[periods/list] ⚠️ Nenhum período válido retornado! Count do banco: ${count || 0}`);
     }
 
     return NextResponse.json({

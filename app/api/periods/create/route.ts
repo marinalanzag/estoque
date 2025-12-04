@@ -82,12 +82,38 @@ export async function POST(req: NextRequest) {
 
     if (existingPeriod) {
       // Se já existe, desativar todos primeiro
-      const { error: deactivateError } = await supabaseAdmin
+      console.log(`[periods/create] Período existente encontrado. Desativando todos os períodos antes de ativar este...`);
+      
+      // Desativar todos os períodos (mais seguro - garante que nenhum fique ativo)
+      const { error: deactivateError, count: deactivateCount } = await supabaseAdmin
         .from("periods")
-        .update({ is_active: false });
+        .update({ is_active: false })
+        .neq("id", "00000000-0000-0000-0000-000000000000"); // Condição sempre verdadeira para atualizar todos
 
       if (deactivateError) {
-        console.error("Erro ao desativar períodos:", deactivateError);
+        console.error("❌ [periods/create] Erro ao desativar períodos:", deactivateError);
+        // Tentar novamente com abordagem diferente
+        const { data: allPeriods } = await supabaseAdmin
+          .from("periods")
+          .select("id")
+          .eq("is_active", true);
+        
+        if (allPeriods && allPeriods.length > 0) {
+          const ids = allPeriods.map(p => p.id);
+          const { error: retryError } = await supabaseAdmin
+            .from("periods")
+            .update({ is_active: false })
+            .in("id", ids);
+          
+          if (retryError) {
+            console.error("❌ [periods/create] Erro ao desativar períodos na segunda tentativa:", retryError);
+            throw new Error(`Erro ao desativar períodos existentes: ${retryError.message}`);
+          } else {
+            console.log(`[periods/create] ✅ Períodos desativados na segunda tentativa`);
+          }
+        }
+      } else {
+        console.log(`[periods/create] ✅ Todos os períodos foram desativados antes de ativar o existente`);
       }
 
       // Preparar dados de atualização (só incluir label se a coluna existir)
@@ -140,15 +166,49 @@ export async function POST(req: NextRequest) {
     }
     
     // Desativar TODOS os períodos (mais seguro - garante que nenhum fique ativo)
-    const { error: deactivateError } = await supabaseAdmin
+    // Tentar primeiro buscar todos os períodos e depois desativar individualmente se necessário
+    let deactivateError: any = null;
+    
+    // Primeiro tentar desativar todos de uma vez
+    const { error: bulkError } = await supabaseAdmin
       .from("periods")
-      .update({ is_active: false });
-
-    if (deactivateError) {
-      console.error("❌ [periods/create] Erro ao desativar períodos:", deactivateError);
-      throw new Error(`Erro ao desativar períodos existentes: ${deactivateError.message}`);
+      .update({ is_active: false })
+      .neq("id", "00000000-0000-0000-0000-000000000000"); // Condição sempre verdadeira para atualizar todos
+    
+    if (bulkError) {
+      console.warn("⚠️ [periods/create] Erro ao desativar todos de uma vez, tentando método alternativo...", bulkError);
+      
+      // Método alternativo: buscar todos os IDs e desativar individualmente
+      const { data: allPeriods, error: fetchError } = await supabaseAdmin
+        .from("periods")
+        .select("id")
+        .eq("is_active", true);
+      
+      if (fetchError) {
+        console.error("❌ [periods/create] Erro ao buscar períodos para desativar:", fetchError);
+        deactivateError = fetchError;
+      } else if (allPeriods && allPeriods.length > 0) {
+        const ids = allPeriods.map(p => p.id);
+        const { error: updateError } = await supabaseAdmin
+          .from("periods")
+          .update({ is_active: false })
+          .in("id", ids);
+        
+        if (updateError) {
+          console.error("❌ [periods/create] Erro ao desativar períodos pelo método alternativo:", updateError);
+          deactivateError = updateError;
+        } else {
+          console.log(`[periods/create] ✅ ${ids.length} períodos desativados pelo método alternativo`);
+        }
+      } else {
+        console.log(`[periods/create] ✅ Nenhum período ativo encontrado para desativar`);
+      }
     } else {
       console.log(`[periods/create] ✅ Todos os períodos foram desativados`);
+    }
+
+    if (deactivateError) {
+      throw new Error(`Erro ao desativar períodos existentes: ${deactivateError.message}`);
     }
 
     // VERIFICAR se realmente não há períodos ativos (garantia)

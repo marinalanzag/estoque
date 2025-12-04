@@ -196,25 +196,30 @@ export default async function ConfiguracaoPage({
                         )}
                       </p>
                     </div>
-                    <SetBaseButton
-                      type="stock"
-                      id={stock.id}
-                      isBase={false}
-                      label="Marcar como base"
-                    />
+                    <div className="flex gap-2">
+                      <SetBaseButton
+                        type="stock"
+                        id={stock.id}
+                        isBase={false}
+                        label="Marcar como base"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
             )}
             {unlinkedStockImports.length > 0 && (
-              <div className="mt-4 space-y-2">
-                <p className="text-sm font-medium text-gray-700">
-                  Importações não vinculadas (disponíveis para vincular):
+              <div className="mt-4 space-y-2 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <p className="text-sm font-semibold text-yellow-800 mb-2">
+                  ⚠️ Importações não vinculadas ao período:
+                </p>
+                <p className="text-xs text-yellow-700 mb-3">
+                  As importações abaixo foram feitas mas não estão vinculadas ao período atual. Vincule-as para que possam ser marcadas como base.
                 </p>
                 {unlinkedStockImports.map((stock) => (
                   <div
                     key={stock.id}
-                    className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-200"
+                    className="flex items-center justify-between p-3 bg-white rounded-lg border border-yellow-300"
                   >
                     <div>
                       <span className="font-medium text-gray-900">
