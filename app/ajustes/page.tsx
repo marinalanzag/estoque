@@ -29,45 +29,70 @@ export default async function AjustesPage({ searchParams }: AjustesPageProps) {
     );
   }
 
-  // Buscar período ativo PRIMEIRO
-  const { data: activePeriod } = await supabaseAdmin
-    .from("periods")
-    .select("id")
-    .eq("is_active", true)
-    .single();
+  // Buscar período ativo usando helper robusto
+  const { getActivePeriodFromRequest } = await import("@/lib/periods");
+  const activePeriod = await getActivePeriodFromRequest();
+  
+  console.log("[ajustes/page] Período ativo encontrado:", activePeriod?.id || "nenhum");
 
   // IMPORTANTE: Se houver período ativo, SEMPRE usar o SPED base, ignorando qualquer seleção manual
   let selectedFileId: string | null = null;
   
   if (activePeriod) {
     const { getBaseSpedFileForPeriod } = await import("@/lib/periods");
+    
+    // Buscar todos os SPEDs do período para debug
+    const { data: spedFilesForPeriod } = await supabaseAdmin
+      .from("sped_files")
+      .select("id, name, is_base, period_id")
+      .eq("period_id", activePeriod.id);
+    
+    console.log(`[ajustes/page] SPEDs vinculados ao período ${activePeriod.id}:`, spedFilesForPeriod?.length || 0);
+    if (spedFilesForPeriod && spedFilesForPeriod.length > 0) {
+      spedFilesForPeriod.forEach(sped => {
+        console.log(`  - ${sped.name}: is_base=${sped.is_base || false}, period_id=${sped.period_id}`);
+      });
+    }
+    
     const baseSpedId = await getBaseSpedFileForPeriod(activePeriod.id);
+    console.log("[ajustes/page] SPED base retornado:", baseSpedId || "nenhum");
+    
     if (baseSpedId) {
       selectedFileId = baseSpedId;
-      console.log("[ajustes/page] Usando SPED base do período:", baseSpedId);
+      console.log("[ajustes/page] ✅ Usando SPED base do período:", baseSpedId);
     } else {
-      // Se não há base, mostrar aviso
-      return (
-        <div className="max-w-6xl mx-auto p-6 space-y-4">
-          <h1 className="text-2xl font-semibold text-gray-900">
-            Ajustes de Códigos
-          </h1>
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-yellow-800 font-medium mb-2">
-              ⚠️ Nenhum SPED base configurado para este período
-            </p>
-            <p className="text-yellow-700 text-sm mb-3">
-              Configure o SPED base na página de configuração do período.
-            </p>
-            <a
-              href="/periodos/configuracao"
-              className="inline-block px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 text-sm font-medium"
-            >
-              Configurar período
-            </a>
+      // Se não há base mas há SPEDs do período, usar o primeiro como fallback
+      if (spedFilesForPeriod && spedFilesForPeriod.length > 0) {
+        console.warn(`[ajustes/page] ⚠️ Nenhum SPED marcado como base, mas encontrados ${spedFilesForPeriod.length} SPED(s) do período. Usando o primeiro como fallback.`);
+        selectedFileId = spedFilesForPeriod[0].id;
+      } else {
+        // Se não há base, mostrar aviso
+        console.error("[ajustes/page] ❌ Nenhum SPED base encontrado e nenhum SPED vinculado ao período");
+        return (
+          <div className="max-w-6xl mx-auto p-6 space-y-4">
+            <h1 className="text-2xl font-semibold text-gray-900">
+              Ajustes de Códigos
+            </h1>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-yellow-800 font-medium mb-2">
+                ⚠️ Nenhum SPED base configurado para este período
+              </p>
+              <p className="text-yellow-700 text-sm mb-3">
+                Configure o SPED base na página de configuração do período.
+              </p>
+              <p className="text-yellow-600 text-xs mb-2">
+                Período: {activePeriod.label || `${activePeriod.year}/${activePeriod.month}`} (ID: {activePeriod.id.substring(0, 8)}...)
+              </p>
+              <a
+                href="/periodos/configuracao"
+                className="inline-block px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 text-sm font-medium"
+              >
+                Configurar período
+              </a>
+            </div>
           </div>
-        </div>
-      );
+        );
+      }
     }
   } else {
     // Se não há período ativo, usar o primeiro SPED disponível (compatibilidade)

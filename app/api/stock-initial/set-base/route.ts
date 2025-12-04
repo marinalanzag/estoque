@@ -23,22 +23,32 @@ export async function POST(req: NextRequest) {
     }
 
     // Buscar o estoque inicial para obter o period_id
+    console.log(`[stock-initial/set-base] Buscando importação: ${importId}`);
     const { data: stockImport, error: stockError } = await supabaseAdmin
       .from("stock_initial_imports")
-      .select("id, period_id")
+      .select("id, period_id, is_base, label")
       .eq("id", importId)
       .single();
 
     if (stockError || !stockImport) {
+      console.error(`[stock-initial/set-base] Erro ao buscar importação:`, stockError);
       return NextResponse.json(
-        { ok: false, error: "Importação de estoque inicial não encontrada" },
+        { ok: false, error: `Importação de estoque inicial não encontrada: ${stockError?.message || 'Não encontrado'}` },
         { status: 404 }
       );
     }
 
+    console.log(`[stock-initial/set-base] Importação encontrada:`, {
+      id: stockImport.id,
+      label: stockImport.label,
+      period_id: stockImport.period_id,
+      is_base: stockImport.is_base,
+    });
+
     if (!stockImport.period_id) {
+      console.warn(`[stock-initial/set-base] ⚠️ Importação não está vinculada a um período`);
       return NextResponse.json(
-        { ok: false, error: "Importação de estoque inicial não está vinculada a um período. Vincule-a primeiro." },
+        { ok: false, error: "Importação de estoque inicial não está vinculada a um período. Vincule-a primeiro na página de configuração." },
         { status: 400 }
       );
     }
@@ -61,7 +71,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Marcar/desmarcar a importação selecionada
-    // Nota: Precisamos adicionar a coluna is_base em stock_initial_imports se ainda não existir
+    console.log(`[stock-initial/set-base] Atualizando is_base para ${isBase} na importação ${importId}`);
     const { data, error } = await supabaseAdmin
       .from("stock_initial_imports")
       .update({ is_base: isBase })
@@ -70,12 +80,25 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      console.error("Erro ao atualizar estoque inicial:", error);
+      console.error(`[stock-initial/set-base] Erro ao atualizar estoque inicial:`, error);
+      console.error(`[stock-initial/set-base] Código do erro: ${error.code}`);
+      console.error(`[stock-initial/set-base] Detalhes:`, error);
+      
+      // Se o erro for sobre coluna não encontrada, informar isso claramente
+      if (error.message?.includes('column') || error.message?.includes('does not exist')) {
+        return NextResponse.json(
+          { ok: false, error: `Erro: A coluna 'is_base' não existe na tabela stock_initial_imports. Execute a migração db/migration_periods_enhancements.sql primeiro.` },
+          { status: 500 }
+        );
+      }
+      
       return NextResponse.json(
-        { ok: false, error: error.message },
+        { ok: false, error: `Erro ao atualizar: ${error.message}` },
         { status: 500 }
       );
     }
+    
+    console.log(`[stock-initial/set-base] ✅ Importação atualizada com sucesso:`, data);
 
     return NextResponse.json({
       ok: true,

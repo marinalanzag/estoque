@@ -251,17 +251,66 @@ export async function getBaseSpedFileForPeriod(
 ): Promise<string | null> {
   const supabaseAdmin = getSupabaseAdmin();
 
+  console.log(`[getBaseSpedFileForPeriod] 🔍 Buscando SPED base para período: ${periodId}`);
+  
+  // Primeiro, buscar todos os SPEDs do período para debug
+  const { data: allSpedFiles, error: allError } = await supabaseAdmin
+    .from("sped_files")
+    .select("id, name, is_base, period_id")
+    .eq("period_id", periodId);
+  
+  if (allError) {
+    console.error(`[getBaseSpedFileForPeriod] ❌ Erro ao buscar SPEDs do período:`, allError);
+  }
+  
+  console.log(`[getBaseSpedFileForPeriod] 📊 Total de SPEDs vinculados ao período: ${allSpedFiles?.length || 0}`);
+  if (allSpedFiles && allSpedFiles.length > 0) {
+    allSpedFiles.forEach(sped => {
+      console.log(`  - ${sped.name} (id: ${sped.id.substring(0, 8)}..., is_base: ${sped.is_base || false}, period_id: ${sped.period_id?.substring(0, 8) || 'null'}...)`);
+    });
+  } else {
+    console.warn(`[getBaseSpedFileForPeriod] ⚠️ Nenhum SPED encontrado vinculado ao período ${periodId}`);
+    
+    // Buscar todos os SPEDs marcados como base para debug
+    const { data: allBaseSpeds } = await supabaseAdmin
+      .from("sped_files")
+      .select("id, name, is_base, period_id")
+      .eq("is_base", true);
+    
+    if (allBaseSpeds && allBaseSpeds.length > 0) {
+      console.warn(`[getBaseSpedFileForPeriod] ⚠️ Encontrados ${allBaseSpeds.length} SPED(s) marcados como base em outros períodos:`);
+      allBaseSpeds.forEach(sped => {
+        console.warn(`  - ${sped.name} (period_id: ${sped.period_id?.substring(0, 8) || 'null'}...)`);
+      });
+    }
+  }
+  
+  // Buscar SPED base do período
   const { data, error } = await supabaseAdmin
     .from("sped_files")
-    .select("id")
+    .select("id, name, is_base, period_id")
     .eq("period_id", periodId)
     .eq("is_base", true)
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
+  if (error) {
+    console.error(`[getBaseSpedFileForPeriod] ❌ Erro ao buscar SPED base:`, error);
     return null;
   }
 
+  if (!data) {
+    console.warn(`[getBaseSpedFileForPeriod] ⚠️ Nenhum SPED base encontrado para o período ${periodId}`);
+    
+    // Se houver SPEDs vinculados mas nenhum como base, usar o primeiro como fallback
+    if (allSpedFiles && allSpedFiles.length > 0) {
+      console.warn(`[getBaseSpedFileForPeriod] ⚠️ Usando primeiro SPED do período como fallback (${allSpedFiles[0].name})`);
+      return allSpedFiles[0].id;
+    }
+    
+    return null;
+  }
+
+  console.log(`[getBaseSpedFileForPeriod] ✅ SPED base encontrado: ${data.name} (id: ${data.id.substring(0, 8)}...)`);
   return data.id;
 }
 
