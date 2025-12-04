@@ -43,6 +43,26 @@ function PeriodSelectorInner() {
       console.log(`[PeriodSelector] ✅ Carregamento inicial concluído. Períodos no estado: ${periods.length}`);
     };
     loadAll();
+    
+    // Listener para recarregar períodos quando houver eventos de período atualizado
+    const handlePeriodUpdated = () => {
+      console.log("[PeriodSelector] 🔄 Evento de período atualizado detectado. Recarregando...");
+      loadPeriods().then(() => loadActivePeriod());
+    };
+    
+    // Escutar eventos customizados de atualização de período
+    window.addEventListener('period:updated', handlePeriodUpdated);
+    window.addEventListener('period:linked', handlePeriodUpdated);
+    window.addEventListener('period:activated', handlePeriodUpdated);
+    window.addEventListener('period:created', handlePeriodUpdated);
+    
+    // Limpar listeners ao desmontar
+    return () => {
+      window.removeEventListener('period:updated', handlePeriodUpdated);
+      window.removeEventListener('period:linked', handlePeriodUpdated);
+      window.removeEventListener('period:activated', handlePeriodUpdated);
+      window.removeEventListener('period:created', handlePeriodUpdated);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -263,6 +283,9 @@ function PeriodSelectorInner() {
         // Recarregar períodos do servidor primeiro
         await loadPeriods();
         
+        // Disparar evento para atualizar outros componentes
+        window.dispatchEvent(new CustomEvent('period:activated'));
+        
         // Atualizar URL e forçar revalidação das páginas server-side
         router.replace(newUrl, { scroll: false });
         router.refresh();
@@ -328,6 +351,9 @@ function PeriodSelectorInner() {
         // Recarregar períodos do servidor para garantir sincronização
         await loadPeriods();
         await loadActivePeriod();
+        
+        // Disparar evento para atualizar outros componentes
+        window.dispatchEvent(new CustomEvent('period:created'));
         
         // Atualizar URL e forçar refresh das páginas server-side
         router.replace(newUrl, { scroll: false });

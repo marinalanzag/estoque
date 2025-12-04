@@ -48,6 +48,9 @@ export default function LinkPeriodButton({
         return;
       }
 
+      // Disparar evento para recarregar períodos
+      window.dispatchEvent(new CustomEvent('period:linked'));
+      
       // Recarregar a página para atualizar os dados
       router.refresh();
     } catch (error) {
