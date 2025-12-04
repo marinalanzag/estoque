@@ -242,6 +242,30 @@ function PeriodSelectorInner() {
         
         // Sempre garantir que o período ativo está na lista
         setPeriods(prev => {
+          // Se a lista estiver vazia, recarregar do servidor primeiro
+          if (prev.length === 0) {
+            console.log(`[PeriodSelector] ⚠️ Lista de períodos está vazia. Recarregando do servidor...`);
+            // Disparar recarregamento assíncrono
+            setTimeout(() => {
+              loadPeriods().then(() => {
+                // Após recarregar, adicionar período ativo se não estiver lá
+                setPeriods(current => {
+                  const exists = current.find(p => p.id === activeFromServer.id);
+                  if (!exists) {
+                    console.log(`[PeriodSelector] ✅ Adicionando período ativo à lista recarregada`);
+                    return [activeFromServer, ...current].sort((a, b) => {
+                      if (b.year !== a.year) return b.year - a.year;
+                      return b.month - a.month;
+                    });
+                  }
+                  return current;
+                });
+              });
+            }, 100);
+            // Retornar lista com período ativo temporariamente
+            return [activeFromServer];
+          }
+          
           const exists = prev.find(p => p.id === activeFromServer.id);
           if (!exists) {
             console.log(`[PeriodSelector] ⚠️ Período ativo (${activeFromServer.year}/${activeFromServer.month}) não estava na lista. Adicionando...`);
@@ -378,23 +402,20 @@ function PeriodSelectorInner() {
         params.set("period", periodParam);
         const newUrl = `${pathname}?${params.toString()}`;
         
+        // Mostrar mensagem de sucesso
+        const message = data.message || "Período criado e ativado com sucesso!";
+        
+        // Atualizar URL primeiro
+        router.replace(newUrl, { scroll: false });
+        
         // Aguardar um pouco para garantir que o período foi salvo no banco
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Recarregar períodos do servidor para garantir sincronização
-        await loadPeriods();
-        await loadActivePeriod();
-        
-        // Disparar evento para atualizar outros componentes
-        window.dispatchEvent(new CustomEvent('period:created'));
-        
-        // Atualizar URL e forçar refresh das páginas server-side
-        router.replace(newUrl, { scroll: false });
-        router.refresh();
-        
-        // Mostrar mensagem de sucesso
-        const message = data.message || "Período criado e ativado com sucesso!";
-        alert(`✅ ${message}`);
+        // Forçar reload completo da página para garantir sincronização total
+        // Isso resolve problemas de estado/cache e garante que tudo seja recarregado do servidor
+        console.log("[PeriodSelector] 🔄 Recarregando página para garantir sincronização completa...");
+        alert(`✅ ${message}\n\nRecarregando a página...`);
+        window.location.href = newUrl;
       } else {
         const errorMsg = data.error || "Erro ao criar período";
         alert(`❌ Erro: ${errorMsg}`);
