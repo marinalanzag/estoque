@@ -26,7 +26,16 @@ export default async function ConfiguracaoPage({
   searchParams,
 }: ConfiguracaoPageProps) {
   const supabaseAdmin = getSupabaseAdmin();
+  
+  // SEMPRE buscar período ativo do banco (ignorar query params/cookies antigos)
+  console.log("[configuracao/page] Buscando período ativo do banco de dados...");
   const activePeriod = await getActivePeriodFromRequest();
+  
+  if (activePeriod) {
+    console.log(`[configuracao/page] ✅ Período ativo encontrado: ${activePeriod.year}/${activePeriod.month} - ${activePeriod.name} (ID: ${activePeriod.id.substring(0, 8)}...)`);
+  } else {
+    console.log("[configuracao/page] ⚠️ Nenhum período ativo encontrado no banco.");
+  }
 
   if (!activePeriod) {
     return (

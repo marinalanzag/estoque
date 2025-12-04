@@ -122,10 +122,8 @@ export async function getOrCreatePeriod(
 }
 
 /**
- * Lê o período ativo a partir de:
- * 1. Query param ?period=YYYY-MM
- * 2. Cookie activePeriod=YYYY-MM
- * 3. Período marcado como is_active=true no banco
+ * Lê o período ativo SEMPRE do banco de dados (fonte de verdade).
+ * Valida query params/cookies apenas se corresponderem ao período realmente ativo.
  * 
  * Retorna o registro completo de periods ou null.
  */
@@ -134,49 +132,7 @@ export async function getActivePeriodFromRequest(
 ): Promise<Period | null> {
   const supabaseAdmin = getSupabaseAdmin();
 
-  let periodParam: string | null = null;
-
-  // 1. Tentar ler do query param
-  if (searchParams) {
-    if (searchParams instanceof URLSearchParams) {
-      periodParam = searchParams.get("period");
-    } else if (typeof searchParams === "object" && "period" in searchParams) {
-      periodParam = searchParams.period || null;
-    }
-  }
-
-  // 2. Se não encontrou no query param, tentar ler do cookie
-  if (!periodParam) {
-    const cookieStore = await cookies();
-    const activePeriodCookie = cookieStore.get("activePeriod");
-    if (activePeriodCookie?.value) {
-      periodParam = activePeriodCookie.value;
-    }
-  }
-
-  // 3. Se encontrou parâmetro, buscar período específico
-  if (periodParam) {
-    const match = periodParam.match(/^(\d{4})-(\d{1,2})$/);
-    if (match) {
-      const year = parseInt(match[1], 10);
-      const month = parseInt(match[2], 10);
-
-      if (month >= 1 && month <= 12) {
-        const { data, error } = await supabaseAdmin
-          .from("periods")
-          .select("*")
-          .eq("year", year)
-          .eq("month", month)
-          .single();
-
-        if (!error && data) {
-          return data as Period;
-        }
-      }
-    }
-  }
-
-  // 4. Fallback: buscar período ativo no banco
+  // SEMPRE buscar período ativo no banco PRIMEIRO (fonte de verdade)
   // IMPORTANTE: Usar array ao invés de .single() para lidar com múltiplos períodos ativos
   const { data: activePeriods, error } = await supabaseAdmin
     .from("periods")
@@ -189,18 +145,12 @@ export async function getActivePeriodFromRequest(
     return null;
   }
 
-  // Se não houver períodos ativos
-  if (!activePeriods || activePeriods.length === 0) {
-    return null;
-  }
-
-  // Se houver múltiplos períodos ativos, retornar o mais recente e corrigir no banco
-  if (activePeriods.length > 1) {
+  // Se houver múltiplos períodos ativos, corrigir no banco
+  if (activePeriods && activePeriods.length > 1) {
     console.warn(
-      `[getActivePeriodFromRequest] ⚠️ Encontrados ${activePeriods.length} períodos ativos. Retornando o mais recente.`
+      `[getActivePeriodFromRequest] ⚠️ Encontrados ${activePeriods.length} períodos ativos. Corrigindo no banco...`
     );
     
-    // Opcionalmente, corrigir no banco desativando os outros
     const mostRecent = activePeriods[0];
     const duplicates = activePeriods.slice(1);
     
@@ -212,15 +162,48 @@ export async function getActivePeriodFromRequest(
         .in("id", duplicateIds);
       
       console.log(
-        `[getActivePeriodFromRequest] ✅ ${duplicates.length} períodos duplicados foram desativados.`
+        `[getActivePeriodFromRequest] ✅ ${duplicates.length} períodos duplicados foram desativados. Mantendo apenas ${mostRecent.year}/${mostRecent.month}.`
       );
     }
     
+    // Retornar o mais recente
     return mostRecent as Period;
   }
 
-  // Um único período ativo
-  return activePeriods[0] as Period;
+  // Se não houver período ativo, retornar null
+  if (!activePeriods || activePeriods.length === 0) {
+    console.log("[getActivePeriodFromRequest] Nenhum período ativo encontrado no banco.");
+    return null;
+  }
+
+  // Um único período ativo encontrado - usar este como fonte de verdade
+  const activePeriod = activePeriods[0] as Period;
+  
+  // Validar se query param corresponde ao período ativo (para sincronização de URL)
+  let periodParam: string | null = null;
+  if (searchParams) {
+    if (searchParams instanceof URLSearchParams) {
+      periodParam = searchParams.get("period");
+    } else if (typeof searchParams === "object" && "period" in searchParams) {
+      periodParam = searchParams.period || null;
+    }
+  }
+  
+  // Se há query param mas não corresponde ao período ativo, logar aviso
+  if (periodParam) {
+    const expectedParam = `${activePeriod.year}-${activePeriod.month}`;
+    if (periodParam !== expectedParam) {
+      console.warn(
+        `[getActivePeriodFromRequest] ⚠️ Query param (${periodParam}) não corresponde ao período ativo (${expectedParam}). Usando período ativo do banco.`
+      );
+    }
+  }
+  
+  console.log(
+    `[getActivePeriodFromRequest] ✅ Período ativo encontrado: ${activePeriod.year}/${activePeriod.month} - ${activePeriod.name}`
+  );
+  
+  return activePeriod;
 }
 
 /**
