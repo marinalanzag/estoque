@@ -93,18 +93,76 @@ export default async function MovimentacoesConsolidadoPage({
     throw new Error(`Erro ao buscar importações de XML: ${xmlError.message}`);
   }
 
-  if (!stockImports || stockImports.length === 0 || !spedFiles) {
-    return (
-      <div className="max-w-6xl mx-auto p-6 space-y-4">
-        <h1 className="text-2xl font-semibold text-gray-900">
-          Consolidação de movimentos
-        </h1>
-        <p className="text-gray-600">
-          Cadastre pelo menos um estoque inicial e um SPED para visualizar os
-          dados consolidados.
-        </p>
-      </div>
-    );
+  // CRÍTICO: Verificar se há dados vinculados ao período quando há período ativo
+  if (activePeriod) {
+    if (!stockImports || stockImports.length === 0) {
+      return (
+        <div className="max-w-6xl mx-auto p-6 space-y-4">
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Consolidação de movimentos
+          </h1>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <p className="text-yellow-800 font-medium mb-2">
+              ⚠️ Nenhum estoque inicial vinculado ao período ativo
+            </p>
+            <p className="text-yellow-700 text-sm mb-3">
+              Este período não possui estoque inicial importado. Por favor, importe o estoque inicial na página de configuração do período.
+            </p>
+            <p className="text-yellow-600 text-xs mb-2">
+              Período: {activePeriod.label || `${activePeriod.year}/${activePeriod.month}`}
+            </p>
+            <Link
+              href="/periodos/configuracao"
+              className="inline-block px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 text-sm font-medium"
+            >
+              Configurar período
+            </Link>
+          </div>
+        </div>
+      );
+    }
+    
+    if (!spedFiles || spedFiles.length === 0) {
+      return (
+        <div className="max-w-6xl mx-auto p-6 space-y-4">
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Consolidação de movimentos
+          </h1>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <p className="text-yellow-800 font-medium mb-2">
+              ⚠️ Nenhum SPED vinculado ao período ativo
+            </p>
+            <p className="text-yellow-700 text-sm mb-3">
+              Este período não possui arquivo SPED importado. Por favor, importe o arquivo SPED na página de importação.
+            </p>
+            <p className="text-yellow-600 text-xs mb-2">
+              Período: {activePeriod.label || `${activePeriod.year}/${activePeriod.month}`}
+            </p>
+            <Link
+              href="/sped/upload"
+              className="inline-block px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 text-sm font-medium"
+            >
+              Importar SPED
+            </Link>
+          </div>
+        </div>
+      );
+    }
+  } else {
+    // Se não há período ativo, verificação genérica (compatibilidade)
+    if (!stockImports || stockImports.length === 0 || !spedFiles || spedFiles.length === 0) {
+      return (
+        <div className="max-w-6xl mx-auto p-6 space-y-4">
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Consolidação de movimentos
+          </h1>
+          <p className="text-gray-600">
+            Cadastre pelo menos um estoque inicial e um SPED para visualizar os
+            dados consolidados.
+          </p>
+        </div>
+      );
+    }
   }
 
   // IMPORTANTE: Se houver período ativo, SEMPRE usar o SPED base e estoque base, ignorando qualquer seleção manual

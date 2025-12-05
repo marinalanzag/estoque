@@ -57,13 +57,37 @@ export async function GET(req: NextRequest) {
     // Por enquanto, vamos buscar da VIEW inventory_theoretical se existir
     // ou consolidar manualmente
 
-    // Buscar estoque inicial
+    // CRÍTICO: Se houver período ativo, buscar apenas o estoque base do período
+    // Não usar dados de outros períodos para evitar contaminação
+    let stockImportId: string | null = null;
+    if (activePeriod) {
+      const { getBaseStockImportForPeriod } = await import("@/lib/periods");
+      stockImportId = await getBaseStockImportForPeriod(activePeriod.id);
+      
+      if (!stockImportId) {
+        // Se não há estoque base vinculado ao período, retornar erro informativo
+        return NextResponse.json({
+          error: "PERIODO_SEM_DADOS",
+          message: "Este período não possui estoque inicial vinculado. Por favor, importe o estoque inicial na página de configuração do período.",
+          period_id: activePeriod.id,
+        }, { status: 400 });
+      }
+    }
+
+    // Buscar estoque inicial (apenas do import_id do período se houver período ativo)
     const stockInitial = await fetchAllRows(async (from, to) => {
-      const { data, error } = await supabaseAdmin
+      let query = supabaseAdmin
         .from("stock_initial")
         .select("cod_item, qtd, unit_cost, unid")
         .range(from, to);
+      
+      // CRÍTICO: Filtrar apenas pelo import_id do período base
+      if (stockImportId) {
+        query = query.eq("import_id", stockImportId);
+      }
+      // Se não há período ativo, buscar todos (comportamento antigo para compatibilidade)
 
+      const { data, error } = await query;
       if (error) throw new Error(`Erro ao buscar estoque inicial: ${error.message}`);
       return data ?? [];
     });
@@ -90,11 +114,36 @@ export async function GET(req: NextRequest) {
       return data ?? [];
     });
 
-    // Buscar saídas (XMLs)
-    const { data: xmlImports } = await supabaseAdmin
-      .from("xml_sales_imports")
-      .select("id")
-      .eq("sped_file_id", spedFileId);
+    // Buscar saídas (XMLs) - CRÍTICO: Filtrar por período se houver período ativo
+    // IMPORTANTE: Não usar dados de outros períodos para evitar contaminação
+    let xmlImports: any[] = [];
+    
+    if (activePeriod) {
+      // Se houver período ativo, usar APENAS XMLs base do período
+      const { getBaseXmlImportsForPeriod } = await import("@/lib/periods");
+      const baseXmlImportIds = await getBaseXmlImportsForPeriod(activePeriod.id);
+      
+      if (baseXmlImportIds.length === 0) {
+        // Se não há XMLs base vinculados ao período, não usar nenhum XML
+        // Isso garante que não há contaminação com dados de outros períodos
+        console.warn("[inventory-data] ⚠️ Nenhum XML base encontrado para o período. Não usando XMLs para evitar contaminação.");
+        xmlImports = []; // Array vazio - não buscar XMLs
+      } else {
+        // Buscar apenas XMLs base do período
+        const { data: xmlImportsData } = await supabaseAdmin
+          .from("xml_sales_imports")
+          .select("id")
+          .in("id", baseXmlImportIds);
+        xmlImports = xmlImportsData ?? [];
+      }
+    } else {
+      // Se não há período ativo, buscar todos os XMLs do SPED (compatibilidade)
+      const { data: xmlImportsData } = await supabaseAdmin
+        .from("xml_sales_imports")
+        .select("id")
+        .eq("sped_file_id", spedFileId);
+      xmlImports = xmlImportsData ?? [];
+    }
 
     const exits: any[] = [];
     if (xmlImports && xmlImports.length > 0) {

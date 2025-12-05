@@ -111,13 +111,23 @@ export default function AdjustmentsTable({
   const loadInventoryData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(
-        `/api/adjustments/inventory-data?sped_file_id=${spedFileId}`
-      );
+      let url = `/api/adjustments/inventory-data?sped_file_id=${spedFileId}`;
+      if (activePeriodId) {
+        url += `&period_id=${activePeriodId}`;
+      }
+      const res = await fetch(url);
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Erro ao carregar dados");
+        // Se for erro de período sem dados, mostrar mensagem específica
+        if (data.error === "PERIODO_SEM_DADOS") {
+          setError(data.message || "Este período não possui dados vinculados. Por favor, importe os arquivos necessários.");
+        } else {
+          setError(data.error || "Erro ao carregar dados");
+        }
+        setNegativos([]);
+        setPositivos([]);
+        return;
       }
 
       setNegativos(data.negativos || []);
@@ -127,15 +137,15 @@ export default function AdjustmentsTable({
     } finally {
       setLoading(false);
     }
-  }, [spedFileId]);
+  }, [spedFileId, activePeriodId]);
 
   useEffect(() => {
-    console.log("[AdjustmentsTable] useEffect inicial - carregando dados para spedFileId:", spedFileId);
+    console.log("[AdjustmentsTable] useEffect inicial - carregando dados para spedFileId:", spedFileId, "periodId:", activePeriodId);
     loadInventoryData();
     // Carregar ajustes ao montar o componente para garantir sincronização
     loadAdjustments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spedFileId]); // Carregar quando o SPED mudar
+  }, [spedFileId, activePeriodId]); // Carregar quando o SPED ou período mudar
 
   const loadAdjustments = async () => {
     try {
