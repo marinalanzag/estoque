@@ -382,27 +382,7 @@ function PeriodSelectorInner() {
       if (data.ok && data.period) {
         const newPeriodData = data.period;
         
-        // Fechar modal
-        setShowCreateModal(false);
-        setNewPeriod({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, name: "" });
-        
-        // Adicionar período à lista localmente (otimistic update)
-        setPeriods(prev => {
-          const exists = prev.find(p => p.id === newPeriodData.id);
-          if (!exists) {
-            return [newPeriodData, ...prev].sort((a, b) => {
-              if (b.year !== a.year) return b.year - a.year;
-              return b.month - a.month;
-            });
-          }
-          return prev;
-        });
-        
-        // Definir como ativo
-        setActivePeriod(newPeriodData);
-        setRefreshKey(prev => prev + 1);
-        
-        // Atualizar URL
+        // Preparar URL do novo período
         const periodParam = `${newPeriodData.year}-${newPeriodData.month}`;
         const params = new URLSearchParams();
         if (searchParams) {
@@ -415,19 +395,20 @@ function PeriodSelectorInner() {
         params.set("period", periodParam);
         const newUrl = `${pathname}?${params.toString()}`;
         
-        // Mostrar mensagem de sucesso
-        const message = data.message || "Período criado e ativado com sucesso!";
+        // Fechar modal ANTES de fazer reload
+        setShowCreateModal(false);
+        setNewPeriod({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, name: "" });
+        setCreating(false);
         
-        // Atualizar URL primeiro
-        router.replace(newUrl, { scroll: false });
+        // Disparar evento para atualizar outros componentes
+        window.dispatchEvent(new CustomEvent('period:created'));
         
-        // Aguardar um pouco para garantir que o período foi salvo no banco
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Aguardar um pouco para garantir que o modal foi fechado
+        await new Promise(resolve => setTimeout(resolve, 100));
         
-        // Forçar reload completo da página para garantir sincronização total
-        // Isso resolve problemas de estado/cache e garante que tudo seja recarregado do servidor
+        // Fazer reload completo da página SEM alert (que bloqueia)
+        // Isso garante que tudo seja recarregado do servidor com dados atualizados
         console.log("[PeriodSelector] 🔄 Recarregando página para garantir sincronização completa...");
-        alert(`✅ ${message}\n\nRecarregando a página...`);
         window.location.href = newUrl;
       } else {
         const errorMsg = data.error || "Erro ao criar período";
