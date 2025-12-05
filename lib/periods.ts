@@ -232,11 +232,43 @@ export async function getActivePeriod(): Promise<Period | null> {
   }
 
   if (!activePeriods || activePeriods.length === 0) {
+    console.log("[getActivePeriod] Nenhum período ativo encontrado no banco.");
     return null;
   }
 
-  // Se houver múltiplos períodos ativos, retornar o mais recente
-  return activePeriods[0] as Period;
+  // Se houver múltiplos períodos ativos, corrigir no banco e retornar o mais recente
+  if (activePeriods.length > 1) {
+    console.warn(
+      `[getActivePeriod] ⚠️ Encontrados ${activePeriods.length} períodos ativos. Corrigindo no banco...`
+    );
+    
+    const mostRecent = activePeriods[0];
+    const duplicates = activePeriods.slice(1);
+    
+    if (duplicates.length > 0) {
+      const duplicateIds = duplicates.map((p) => p.id);
+      await supabaseAdmin
+        .from("periods")
+        .update({ is_active: false })
+        .in("id", duplicateIds);
+      
+      console.log(
+        `[getActivePeriod] ✅ ${duplicates.length} períodos duplicados foram desativados. Mantendo apenas ${mostRecent.year}/${mostRecent.month}.`
+      );
+    }
+    
+    console.log(
+      `[getActivePeriod] ✅ Período ativo encontrado: ${mostRecent.year}/${mostRecent.month} - ${mostRecent.name}`
+    );
+    return mostRecent as Period;
+  }
+
+  // Um único período ativo encontrado
+  const activePeriod = activePeriods[0] as Period;
+  console.log(
+    `[getActivePeriod] ✅ Período ativo encontrado: ${activePeriod.year}/${activePeriod.month} - ${activePeriod.name}`
+  );
+  return activePeriod;
 }
 
 /**

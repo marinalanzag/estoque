@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 import {
-  getActivePeriodFromRequest,
+  getActivePeriod,
   getBaseStockImportForPeriod,
   getBaseSpedFileForPeriod,
   getSpedFilesForPeriod,
@@ -14,6 +14,8 @@ import SetBaseButton from "@/components/periods/SetBaseButton";
 import LinkPeriodButton from "@/components/periods/LinkPeriodButton";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 interface ConfiguracaoPageProps {
   searchParams?: {
@@ -27,9 +29,9 @@ export default async function ConfiguracaoPage({
 }: ConfiguracaoPageProps) {
   const supabaseAdmin = getSupabaseAdmin();
   
-  // SEMPRE buscar período ativo do banco (ignorar query params/cookies antigos)
+  // SEMPRE buscar período ativo do banco usando helper simplificado
   console.log("[configuracao/page] Buscando período ativo do banco de dados...");
-  const activePeriod = await getActivePeriodFromRequest();
+  const activePeriod = await getActivePeriod();
   
   if (activePeriod) {
     console.log(`[configuracao/page] ✅ Período ativo encontrado: ${activePeriod.year}/${activePeriod.month} - ${activePeriod.name} (ID: ${activePeriod.id.substring(0, 8)}...)`);
