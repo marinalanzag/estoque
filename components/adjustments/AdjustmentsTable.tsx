@@ -257,7 +257,7 @@ export default function AdjustmentsTable({
       });
       
       // Pequeno delay para garantir que o banco processou a inserção
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Recarregar ajustes do banco para garantir sincronização completa
       console.log("[AdjustmentsTable] Recarregando ajustes do banco...");
@@ -269,13 +269,16 @@ export default function AdjustmentsTable({
       
       // Revalidar a página no servidor para garantir que os dados sejam atualizados
       console.log("[AdjustmentsTable] Revalidando página no servidor...");
-      router.refresh();
       
-      // Se houver função de refresh do componente pai, chamá-la também
+      // Se houver função de refresh do componente pai, chamá-la primeiro
       if (onRefresh) {
         console.log("[AdjustmentsTable] Chamando onRefresh do componente pai...");
         onRefresh();
       }
+      
+      // Aguardar um pouco antes de fazer o refresh do router para garantir que o servidor processou
+      await new Promise(resolve => setTimeout(resolve, 300));
+      router.refresh();
       
       console.log("[AdjustmentsTable] ✅ Processo de salvamento concluído");
     } catch (err) {

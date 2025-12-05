@@ -63,15 +63,22 @@ export default async function MovimentacoesConsolidadoPage({
     spedQuery.eq("period_id", activePeriod.id);
   }
 
+  // Buscar inventários iniciais (filtrar por período se houver período ativo)
+  const stockQuery = supabaseAdmin
+    .from("stock_initial_imports")
+    .select("id, label, total_items, total_value, created_at, period_id, is_base")
+    .order("created_at", { ascending: false });
+
+  if (activePeriod) {
+    stockQuery.eq("period_id", activePeriod.id);
+  }
+
   const [
     { data: stockImports },
     { data: spedFiles, error: spedError },
     { data: xmlImportsRaw, error: xmlError },
   ] = await Promise.all([
-    supabaseAdmin
-      .from("stock_initial_imports")
-      .select("id, label, total_items, total_value, created_at, period_id")
-      .order("created_at", { ascending: false }),
+    stockQuery,
     spedQuery,
     supabaseAdmin
       .from("xml_sales_imports")
@@ -416,26 +423,79 @@ export default async function MovimentacoesConsolidadoPage({
 
       <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
         {activePeriod && selectedFileId ? (
-          // Quando há período ativo e base definida, mostrar apenas informações
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span className="font-medium">Período ativo:</span>
-              <span>{activePeriod.label || `${activePeriod.month}/${activePeriod.year}`}</span>
+          // Quando há período ativo e base definida, mostrar formulário de seleção com base pré-selecionada
+          <form className="grid md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Importação do estoque inicial
+              </label>
+              <select
+                name="importId"
+                defaultValue={selectedImportId || undefined}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+              >
+                {stockImports && stockImports.length > 0 ? (
+                  stockImports
+                    .sort((a, b) => {
+                      // Ordenar: base primeiro, depois por data (mais recente primeiro)
+                      if (a.is_base && !b.is_base) return -1;
+                      if (!a.is_base && b.is_base) return 1;
+                      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                    })
+                    .map((imp) => (
+                      <option key={imp.id} value={imp.id}>
+                        {(imp.is_base ? "✔ BASE - " : "") +
+                          (imp.label || "Sem descrição") +
+                          " - " +
+                          new Date(imp.created_at).toLocaleString("pt-BR")}
+                      </option>
+                    ))
+                ) : (
+                  <option value="">Nenhum inventário disponível</option>
+                )}
+              </select>
             </div>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span className="font-medium">SPED base:</span>
-              <span>{spedFiles.find(f => f.id === selectedFileId)?.name || "Não encontrado"}</span>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Arquivo SPED (entradas/saídas)
+              </label>
+              <select
+                name="fileId"
+                defaultValue={selectedFileId}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+              >
+                {spedFiles.map((file) => (
+                  <option key={file.id} value={file.id}>
+                    {(file.is_base ? "✔ BASE - " : "") +
+                      file.name +
+                      " (" +
+                      new Date(file.uploaded_at).toLocaleDateString("pt-BR") +
+                      ")"}
+                  </option>
+                ))}
+              </select>
             </div>
-            {selectedXmlGroup && (
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <span className="font-medium">XMLs base:</span>
-                <span>{selectedXmlGroup.sped_name || "SPED indefinido"} - {new Date(selectedXmlGroup.date).toLocaleDateString("pt-BR")}</span>
-              </div>
-            )}
-            <p className="text-xs text-gray-500 mt-2">
-              Para alterar a base, acesse a página de importação/configuração.
-            </p>
-          </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Arquivo de XML (agrupado)
+              </label>
+              <XmlGroupSelect
+                name="xmlGroupKey"
+                options={xmlGroupOptions}
+                defaultValue={selectedXmlGroup?.key ?? xmlGroupOptions[0]?.key ?? ""}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                disabledPlaceholder="Nenhuma importação de XML encontrada."
+              />
+            </div>
+            <div className="md:col-span-3 flex justify-end">
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
+              >
+                Aplicar filtros
+              </button>
+            </div>
+          </form>
         ) : (
           // Quando não há base, mostrar formulário de seleção
           <form className="grid md:grid-cols-3 gap-4">
@@ -448,13 +508,17 @@ export default async function MovimentacoesConsolidadoPage({
                 defaultValue={selectedImportId}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
               >
-                {stockImports.map((imp) => (
-                  <option key={imp.id} value={imp.id}>
-                    {(imp.label || "Sem descrição") +
-                      " - " +
-                      new Date(imp.created_at).toLocaleString("pt-BR")}
-                  </option>
-                ))}
+                {stockImports && stockImports.length > 0 ? (
+                  stockImports.map((imp) => (
+                    <option key={imp.id} value={imp.id}>
+                      {(imp.label || "Sem descrição") +
+                        " - " +
+                        new Date(imp.created_at).toLocaleString("pt-BR")}
+                    </option>
+                  ))
+                ) : (
+                  <option value="">Nenhum inventário disponível</option>
+                )}
               </select>
             </div>
             <div>
