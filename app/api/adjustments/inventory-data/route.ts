@@ -30,12 +30,27 @@ export async function GET(req: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin();
     const searchParams = req.nextUrl.searchParams;
     const spedFileId = searchParams.get("sped_file_id");
+    const periodIdParam = searchParams.get("period_id");
 
     if (!spedFileId) {
       return NextResponse.json(
         { error: "sped_file_id é obrigatório" },
         { status: 400 }
       );
+    }
+
+    // Buscar período ativo ou usar period_id da query string
+    let activePeriod: { id: string } | null = null;
+    
+    if (periodIdParam) {
+      activePeriod = { id: periodIdParam };
+    } else {
+      const { data: periodData } = await supabaseAdmin
+        .from("periods")
+        .select("id")
+        .eq("is_active", true)
+        .single();
+      activePeriod = periodData || null;
     }
 
     // Buscar inventário teórico (ou consolidar manualmente)
@@ -103,11 +118,18 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Buscar ajustes já feitos
-    const { data: adjustments } = await supabaseAdmin
+    // Buscar ajustes já feitos (do arquivo SPED e do período ativo se existir)
+    let adjustmentsQuery = supabaseAdmin
       .from("code_offset_adjustments")
       .select("cod_negativo, cod_positivo, qtd_baixada, unit_cost, total_value")
       .eq("sped_file_id", spedFileId);
+
+    // Se houver período ativo, filtrar por ele também OU por null (ajustes antigos sem período)
+    if (activePeriod) {
+      adjustmentsQuery = adjustmentsQuery.or(`period_id.eq.${activePeriod.id},period_id.is.null`);
+    }
+
+    const { data: adjustments } = await adjustmentsQuery;
 
     // Consolidar por cod_item
     const inventory = new Map<
@@ -115,6 +137,7 @@ export async function GET(req: NextRequest) {
       {
         cod_item: string;
         descr_item?: string | null;
+        unidade?: string | null;
         estoque_inicial: number;
         entradas: number;
         saidas: number;
@@ -135,6 +158,7 @@ export async function GET(req: NextRequest) {
 
       inventory.set(codItem, {
         cod_item: codItem,
+        unidade: item.unid || null,
         estoque_inicial: qtd,
         entradas: 0,
         saidas: 0,
@@ -169,6 +193,7 @@ export async function GET(req: NextRequest) {
       } else {
         inventory.set(codItem, {
           cod_item: codItem,
+          unidade: null, // Será preenchido depois com dados do produto
           estoque_inicial: 0,
           entradas: qtd,
           saidas: 0,
@@ -195,6 +220,7 @@ export async function GET(req: NextRequest) {
       } else {
         inventory.set(codItem, {
           cod_item: codItem,
+          unidade: item.unid || null,
           estoque_inicial: 0,
           entradas: 0,
           saidas: qtd,
@@ -222,6 +248,7 @@ export async function GET(req: NextRequest) {
         // Se o código negativo não existe no inventário, criar entrada
         inventory.set(codNegativo, {
           cod_item: codNegativo,
+          unidade: null, // Será preenchido depois com dados do produto
           estoque_inicial: 0,
           entradas: 0,
           saidas: 0,
@@ -246,17 +273,22 @@ export async function GET(req: NextRequest) {
       item.estoque_final = item.estoque_teorico + item.ajustes_recebidos - item.ajustes_fornecidos;
     });
 
-    // Buscar descrições dos produtos do SPED
+    // Buscar descrições e unidades dos produtos do SPED
     const { data: products } = await supabaseAdmin
       .from("products")
-      .select("cod_item, descr_item")
+      .select("cod_item, descr_item, unid_inv")
       .eq("sped_file_id", spedFileId);
 
     products?.forEach((prod) => {
       const codItem = normalizeCodItem(prod.cod_item);
       const item = inventory.get(codItem);
-      if (item && prod.descr_item) {
-        item.descr_item = prod.descr_item;
+      if (item) {
+        if (prod.descr_item) {
+          item.descr_item = prod.descr_item;
+        }
+        if (prod.unid_inv && !item.unidade) {
+          item.unidade = prod.unid_inv;
+        }
       }
     });
 
@@ -280,12 +312,14 @@ export async function GET(req: NextRequest) {
     }
 
     // Separar em negativos e positivos
+    // IMPORTANTE: Para positivos, mostrar TODOS os itens com estoque_final > 0,
+    // não apenas os que têm entradas (Erro 04)
     const negativos = Array.from(inventory.values())
       .filter((item) => item.estoque_final < 0)
       .sort((a, b) => a.estoque_final - b.estoque_final);
 
     const positivos = Array.from(inventory.values())
-      .filter((item) => item.estoque_final > 0)
+      .filter((item) => item.estoque_final > 0) // Mostrar todos com estoque final positivo
       .sort((a, b) => b.estoque_final - a.estoque_final);
 
     // Calcular totais de ajustes

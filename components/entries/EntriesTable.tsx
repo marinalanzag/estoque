@@ -46,6 +46,8 @@ export default function EntriesTable({ entries, selectedSpedFileId }: EntriesTab
       console.log(`[EntriesTable] Valores dos ajustes:`, ajustados.map(a => ({ id: a.documentItemId, qty: a.adjusted_qty })).slice(0, 5));
     }
     
+    // CRÍTICO: Sempre atualizar rows e editedValues com os dados do servidor
+    // Isso garante que ajustes salvos sejam refletidos mesmo após sair e voltar para a aba
     setRows(entries);
     const initialValues: Record<string, string> = {};
     entries.forEach((row) => {
@@ -57,7 +59,10 @@ export default function EntriesTable({ entries, selectedSpedFileId }: EntriesTab
       }
     });
     setEditedValues(initialValues);
+    // Limpar savedItems para garantir que o estado seja sincronizado com o servidor
+    setSavedItems(new Set());
   }, [entries]);
+
 
 
   // Calcular custo total apenas dos itens do SPED selecionado

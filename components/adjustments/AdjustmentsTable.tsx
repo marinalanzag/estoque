@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 interface InventoryItem {
   cod_item: string;
   descr_item?: string | null;
+  unidade?: string | null;
   estoque_inicial: number;
   entradas: number;
   saidas: number;
@@ -194,11 +195,35 @@ export default function AdjustmentsTable({
       return;
     }
 
+    // Verificar se as unidades são diferentes
+    const unidadeNegativo = negativo.unidade || null;
+    const unidadePositivo = positivo.unidade || null;
+    const unidadesDiferentes = unidadeNegativo && unidadePositivo && 
+                               unidadeNegativo.toLowerCase() !== unidadePositivo.toLowerCase();
+    
+    // Se quantidade excede o saldo disponível
     if (qtd > positivo.estoque_final) {
-      setError(
-        `Quantidade excede o estoque disponível (${positivo.estoque_final.toFixed(2)})`
-      );
-      return;
+      // Se as unidades são diferentes, mostrar aviso mas permitir
+      if (unidadesDiferentes) {
+        const confirmar = window.confirm(
+          `⚠️ ATENÇÃO: A quantidade (${qtd.toFixed(2)}) excede o estoque disponível (${positivo.estoque_final.toFixed(2)}).\n\n` +
+          `Unidades diferentes detectadas:\n` +
+          `- Positivo: ${unidadePositivo}\n` +
+          `- Negativo: ${unidadeNegativo}\n\n` +
+          `Isso pode ser normal quando há conversão de unidades (ex: saco → kg).\n\n` +
+          `Deseja continuar mesmo assim?`
+        );
+        if (!confirmar) {
+          return;
+        }
+        // Continuar com o salvamento mesmo excedendo o saldo
+      } else {
+        // Se unidades são iguais ou não informadas, bloquear
+        setError(
+          `Quantidade excede o estoque disponível (${positivo.estoque_final.toFixed(2)})`
+        );
+        return;
+      }
     }
 
     try {
@@ -531,16 +556,30 @@ export default function AdjustmentsTable({
               </select>
             </div>
             {selectedPositivoItem && (
-              <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs">
-                <p className="text-gray-700">
-                  <strong>Disponível:</strong> {(() => {
-                    const ajustesFornecidos = adjustments
-                      .filter((adj) => adj.cod_positivo === selectedPositivoItem.cod_item)
-                      .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
-                    return (selectedPositivoItem.estoque_final - ajustesFornecidos).toFixed(2);
-                  })()} | 
-                  <strong> Custo unitário:</strong> R$ {selectedPositivoItem.unit_cost.toFixed(2)}
-                </p>
+              <div className="mt-2 space-y-1">
+                <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs">
+                  <p className="text-gray-700">
+                    <strong>Disponível:</strong> {(() => {
+                      const ajustesFornecidos = adjustments
+                        .filter((adj) => adj.cod_positivo === selectedPositivoItem.cod_item)
+                        .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
+                      return (selectedPositivoItem.estoque_final - ajustesFornecidos).toFixed(2);
+                    })()} | 
+                    <strong> Custo unitário:</strong> R$ {selectedPositivoItem.unit_cost.toFixed(2)}
+                    {selectedPositivoItem.unidade && (
+                      <> | <strong>Unidade:</strong> {selectedPositivoItem.unidade}</>
+                    )}
+                  </p>
+                </div>
+                {selectedNegativoItem && selectedPositivoItem.unidade && selectedNegativoItem.unidade && 
+                 selectedPositivoItem.unidade.toLowerCase() !== selectedNegativoItem.unidade.toLowerCase() && (
+                  <div className="p-2 bg-yellow-50 border border-yellow-300 rounded text-xs">
+                    <p className="text-yellow-800">
+                      ⚠️ <strong>Atenção:</strong> Unidades diferentes detectadas (Positivo: {selectedPositivoItem.unidade}, Negativo: {selectedNegativoItem.unidade}). 
+                      A baixa pode exceder o saldo disponível devido à conversão de unidades.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
             {searchPositivos && filteredPositivos.length === 0 && (
