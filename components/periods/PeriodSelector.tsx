@@ -382,6 +382,14 @@ function PeriodSelectorInner() {
       if (data.ok && data.period) {
         const newPeriodData = data.period;
         
+        // Fechar modal PRIMEIRO (sem esperar)
+        setShowCreateModal(false);
+        setNewPeriod({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, name: "" });
+        setCreating(false);
+        
+        // Disparar evento para atualizar outros componentes
+        window.dispatchEvent(new CustomEvent('period:created'));
+        
         // Preparar URL do novo período
         const periodParam = `${newPeriodData.year}-${newPeriodData.month}`;
         const params = new URLSearchParams();
@@ -395,20 +403,17 @@ function PeriodSelectorInner() {
         params.set("period", periodParam);
         const newUrl = `${pathname}?${params.toString()}`;
         
-        // Fechar modal ANTES de fazer reload
-        setShowCreateModal(false);
-        setNewPeriod({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, name: "" });
-        setCreating(false);
+        // Recarregar períodos do servidor ANTES de fazer reload
+        // Isso garante que o dropdown tenha os dados atualizados
+        console.log("[PeriodSelector] 🔄 Recarregando períodos do servidor antes do reload...");
+        await loadPeriods();
+        await loadActivePeriod();
         
-        // Disparar evento para atualizar outros componentes
-        window.dispatchEvent(new CustomEvent('period:created'));
+        // Aguardar um pouco para garantir que períodos foram carregados
+        await new Promise(resolve => setTimeout(resolve, 300));
         
-        // Aguardar um pouco para garantir que o modal foi fechado
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Fazer reload completo da página SEM alert (que bloqueia)
-        // Isso garante que tudo seja recarregado do servidor com dados atualizados
-        console.log("[PeriodSelector] 🔄 Recarregando página para garantir sincronização completa...");
+        // Fazer reload completo da página
+        console.log("[PeriodSelector] 🔄 Fazendo reload completo da página...");
         window.location.href = newUrl;
       } else {
         const errorMsg = data.error || "Erro ao criar período";
