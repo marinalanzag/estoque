@@ -139,19 +139,25 @@ function PeriodSelectorInner() {
       // LIMPAR estado local antes de carregar (garantir dados frescos)
       setPeriods([]);
       
-      // Adicionar timestamp para evitar cache
+      // Adicionar timestamp único para evitar cache
       const timestamp = Date.now();
-      console.log(`[PeriodSelector] 🔄 Carregando períodos... (timestamp: ${timestamp})`);
+      const random = Math.random().toString(36).substring(7);
+      console.log(`[PeriodSelector] 🔄 Carregando períodos... (timestamp: ${timestamp}, random: ${random})`);
       console.log(`[PeriodSelector] 🧹 Estado local limpo antes de carregar`);
       
-      const res = await fetch(`/api/periods/list?t=${timestamp}&_=${Date.now()}`, {
+      // Fetch mais agressivo contra cache
+      const res = await fetch(`/api/periods/list?t=${timestamp}&r=${random}&_=${Date.now()}`, {
         cache: "no-store",
         method: "GET",
         headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
           'Pragma': 'no-cache',
           'Expires': '0',
+          'If-Modified-Since': '0',
+          'If-None-Match': '*',
         },
+        // Forçar bypass de cache do navegador
+        credentials: 'same-origin',
       });
       
       if (!res.ok) {
@@ -210,12 +216,19 @@ function PeriodSelectorInner() {
       console.log("[PeriodSelector] Carregando período ativo...");
       
       // SEMPRE buscar período ativo da API primeiro (fonte de verdade)
-      const res = await fetch(`/api/periods/active?t=${Date.now()}`, {
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(7);
+      const res = await fetch(`/api/periods/active?t=${timestamp}&r=${random}&_=${Date.now()}`, {
         cache: "no-store",
+        method: "GET",
         headers: {
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
           'Pragma': 'no-cache',
+          'Expires': '0',
+          'If-Modified-Since': '0',
+          'If-None-Match': '*',
         },
+        credentials: 'same-origin',
       });
       
       const data = await res.json();
