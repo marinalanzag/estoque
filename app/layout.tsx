@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import AppLayoutClient from "./(app)/layout";
+import AppLayout from "./(app)/layout";
 
 export const metadata: Metadata = {
   title: "Inventário SPED",
@@ -15,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className="antialiased">
-        <AppLayoutClient>{children}</AppLayoutClient>
+        <AppLayout>{children}</AppLayout>
       </body>
     </html>
   );

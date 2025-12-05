@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 
 interface InventoryItem {
   cod_item: string;
@@ -32,6 +33,7 @@ interface AdjustmentsTableProps {
   initialAdjustments: Adjustment[];
   onAdjustmentsChange?: (adjustments: Adjustment[]) => void;
   onRefresh?: () => void;
+  activePeriodId?: string | null;
 }
 
 export default function AdjustmentsTable({
@@ -40,7 +42,9 @@ export default function AdjustmentsTable({
   initialAdjustments,
   onAdjustmentsChange,
   onRefresh,
+  activePeriodId = null,
 }: AdjustmentsTableProps) {
+  const router = useRouter();
   const [negativos, setNegativos] = useState<InventoryItem[]>([]);
   const [positivos, setPositivos] = useState<InventoryItem[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>(initialAdjustments);
@@ -136,16 +140,11 @@ export default function AdjustmentsTable({
     try {
       console.log("[AdjustmentsTable] 🔄 Iniciando loadAdjustments para spedFileId:", spedFileId);
       
-      // Buscar período ativo para garantir que busca os ajustes do período correto
-      const periodRes = await fetch("/api/periods/active");
-      const periodData = await periodRes.ok ? await periodRes.json() : null;
-      const periodId = periodData?.period?.id;
-      
-      console.log("[AdjustmentsTable] Período ativo encontrado:", periodId);
+      console.log("[AdjustmentsTable] Período ativo recebido via props:", activePeriodId);
       
       let url = `/api/adjustments/list?sped_file_id=${spedFileId}`;
-      if (periodId) {
-        url += `&period_id=${periodId}`;
+      if (activePeriodId) {
+        url += `&period_id=${activePeriodId}`;
       }
       
       console.log("[AdjustmentsTable] Buscando ajustes na URL:", url);
@@ -267,6 +266,10 @@ export default function AdjustmentsTable({
       // Recarregar dados do inventário para refletir os ajustes
       console.log("[AdjustmentsTable] Recarregando dados do inventário...");
       await loadInventoryData();
+      
+      // Revalidar a página no servidor para garantir que os dados sejam atualizados
+      console.log("[AdjustmentsTable] Revalidando página no servidor...");
+      router.refresh();
       
       // Se houver função de refresh do componente pai, chamá-la também
       if (onRefresh) {

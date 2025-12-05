@@ -19,12 +19,14 @@ interface AdjustmentsPageClientProps {
   spedFileId: string;
   fileName: string;
   initialAdjustments: Adjustment[];
+  activePeriodId?: string | null;
 }
 
 export default function AdjustmentsPageClient({
   spedFileId,
   fileName,
   initialAdjustments,
+  activePeriodId = null,
 }: AdjustmentsPageClientProps) {
   const router = useRouter();
   const [adjustments, setAdjustments] = useState<Adjustment[]>(initialAdjustments);
@@ -71,6 +73,7 @@ export default function AdjustmentsPageClient({
         initialAdjustments={initialAdjustments} // Passar initialAdjustments do servidor
         onAdjustmentsChange={handleAdjustmentsChange}
         onRefresh={handleRefresh} // Passar função de refresh
+        activePeriodId={activePeriodId}
       />
     </>
   );

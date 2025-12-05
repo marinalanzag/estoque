@@ -156,6 +156,7 @@ export default async function AjustesRelatorioPage({
       <AdjustmentsReportTable
         spedFileId={selectedFileId}
         fileName={selectedFile?.name ?? "Arquivo SPED"}
+        activePeriodId={activePeriod?.id || null}
       />
     </div>
   );

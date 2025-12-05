@@ -24,11 +24,13 @@ interface ImpactoItem {
 interface AdjustmentsReportTableProps {
   spedFileId: string;
   fileName: string;
+  activePeriodId?: string | null;
 }
 
 export default function AdjustmentsReportTable({
   spedFileId,
   fileName,
+  activePeriodId = null,
 }: AdjustmentsReportTableProps) {
   const [report, setReport] = useState<AdjustmentReportItem[]>([]);
   const [summary, setSummary] = useState<any>(null);
@@ -51,16 +53,11 @@ export default function AdjustmentsReportTable({
       }
       setError(null);
       
-      // Buscar período ativo para garantir que busca os ajustes do período correto
-      const periodRes = await fetch("/api/periods/active");
-      const periodData = await periodRes.ok ? await periodRes.json() : null;
-      const periodId = periodData?.period?.id;
-      
-      console.log("[AdjustmentsReportTable] Período ativo encontrado:", periodId);
+      console.log("[AdjustmentsReportTable] Período ativo recebido via props:", activePeriodId);
       
       let url = `/api/adjustments/report?sped_file_id=${spedFileId}`;
-      if (periodId) {
-        url += `&period_id=${periodId}`;
+      if (activePeriodId) {
+        url += `&period_id=${activePeriodId}`;
       }
       
       console.log("[AdjustmentsReportTable] Buscando relatório na URL:", url);
@@ -90,7 +87,7 @@ export default function AdjustmentsReportTable({
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [spedFileId]);
+  }, [spedFileId, activePeriodId]);
 
   useEffect(() => {
     loadReport();

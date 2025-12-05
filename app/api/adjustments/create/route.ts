@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 import { normalizeCodItem } from "@/lib/utils";
+import { getActivePeriod } from "@/lib/periods";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,19 +54,11 @@ export async function POST(req: NextRequest) {
 
     const total_value = Number(qtd_baixada) * Number(unit_cost);
 
-    // Buscar período ativo
-    const { data: activePeriod, error: periodError } = await supabaseAdmin
-      .from("periods")
-      .select("id")
-      .eq("is_active", true)
-      .single();
-
-    if (periodError && periodError.code !== "PGRST116") {
-      console.error("[api/adjustments/create] Erro ao buscar período ativo:", periodError);
-    }
-
+    // Buscar período ativo usando helper que lida com múltiplos períodos ativos
+    const activePeriod = await getActivePeriod();
     const periodId = activePeriod?.id || null;
-    console.log("[api/adjustments/create] Período ativo encontrado:", periodId);
+    
+    console.log("[api/adjustments/create] Período ativo encontrado:", periodId || "nenhum");
     if (!periodId) {
       console.warn("[api/adjustments/create] ⚠️ ATENÇÃO: Nenhum período ativo encontrado! O ajuste será criado sem period_id.");
     }

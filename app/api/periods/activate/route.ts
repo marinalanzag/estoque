@@ -1,7 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabaseServer";
-import { setActivePeriodCookie } from "@/lib/periods";
 import { cookies } from "next/headers";
+import { getSupabaseAdmin } from "@/lib/supabaseServer";
+
+/**
+ * Função server-side para setar o cookie de período ativo.
+ * Formato do cookie: activePeriod=YYYY-MM
+ */
+async function setActivePeriodCookie(
+  year: number,
+  month: number
+): Promise<void> {
+  const cookieStore = await cookies();
+  const cookieValue = `${year}-${month}`;
+  
+  cookieStore.set("activePeriod", cookieValue, {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 365, // 1 ano
+    path: "/",
+  });
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

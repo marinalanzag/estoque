@@ -1,4 +1,3 @@
-import { cookies } from "next/headers";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 
 export interface Period {
@@ -69,6 +68,14 @@ export async function getAvailablePeriods(): Promise<Period[]> {
   }
 
   return (data || []) as Period[];
+}
+
+/**
+ * Alias para getAvailablePeriods - retorna todos os períodos
+ * Centraliza a leitura de períodos para uso em Server Components
+ */
+export async function getAllPeriods(): Promise<Period[]> {
+  return getAvailablePeriods();
 }
 
 /**
@@ -207,23 +214,29 @@ export async function getActivePeriodFromRequest(
 }
 
 /**
- * Função server-side para setar o cookie de período ativo.
- * Formato do cookie: activePeriod=YYYY-MM
+ * Busca o período ativo do banco de dados (sem validação de query params/cookies)
+ * Centraliza a leitura do período ativo para uso em Server Components
  */
-export async function setActivePeriodCookie(
-  year: number,
-  month: number
-): Promise<void> {
-  const cookieStore = await cookies();
-  const cookieValue = `${year}-${month}`;
-  
-  cookieStore.set("activePeriod", cookieValue, {
-    httpOnly: false, // Permitir acesso via JavaScript se necessário
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 365, // 1 ano
-    path: "/",
-  });
+export async function getActivePeriod(): Promise<Period | null> {
+  const supabaseAdmin = getSupabaseAdmin();
+
+  const { data: activePeriods, error } = await supabaseAdmin
+    .from("periods")
+    .select("*")
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[getActivePeriod] Erro ao buscar período ativo:", error);
+    return null;
+  }
+
+  if (!activePeriods || activePeriods.length === 0) {
+    return null;
+  }
+
+  // Se houver múltiplos períodos ativos, retornar o mais recente
+  return activePeriods[0] as Period;
 }
 
 /**

@@ -7,6 +7,7 @@ interface SpedUploadFormProps {
   hideHeader?: boolean;
   hideFooter?: boolean;
   variant?: "standalone" | "embedded";
+  activePeriodId?: string | null;
 }
 
 interface SpedFile {
@@ -20,6 +21,7 @@ export default function SpedUploadForm({
   hideHeader = false,
   hideFooter = false,
   variant = "standalone",
+  activePeriodId: initialActivePeriodId = null,
 }: SpedUploadFormProps) {
   const [mode, setMode] = useState<"upload" | "select">("upload");
   const [file, setFile] = useState<File | null>(null);
@@ -28,23 +30,9 @@ export default function SpedUploadForm({
   const [spedFiles, setSpedFiles] = useState<SpedFile[]>([]);
   const [selectedSpedFileId, setSelectedSpedFileId] = useState<string>("");
   const [loadingFiles, setLoadingFiles] = useState(false);
-  const [activePeriodId, setActivePeriodId] = useState<string | null>(null);
+  const [activePeriodId] = useState<string | null>(initialActivePeriodId);
 
   useEffect(() => {
-    // Carregar período ativo
-    const loadActivePeriod = async () => {
-      try {
-        const res = await fetch("/api/periods/active");
-        const data = await res.json();
-        if (data.ok && data.period) {
-          setActivePeriodId(data.period.id);
-        }
-      } catch (err) {
-        console.error("Erro ao carregar período ativo:", err);
-      }
-    };
-    loadActivePeriod();
-    
     if (mode === "select") {
       loadSpedFiles();
     }

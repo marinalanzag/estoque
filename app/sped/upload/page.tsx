@@ -1,6 +1,9 @@
 import SpedUploadForm from "@/components/uploads/SpedUploadForm";
+import { getActivePeriod } from "@/lib/periods";
 
-export default function SpedUploadPage() {
-  return <SpedUploadForm />;
+export default async function SpedUploadPage() {
+  const activePeriod = await getActivePeriod();
+  
+  return <SpedUploadForm activePeriodId={activePeriod?.id || null} />;
 }
 

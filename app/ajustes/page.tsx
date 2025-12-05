@@ -196,6 +196,7 @@ export default async function AjustesPage({ searchParams }: AjustesPageProps) {
         spedFileId={selectedFileId}
         fileName={selectedFile?.name ?? "Arquivo SPED"}
         initialAdjustments={adjustments ?? []}
+        activePeriodId={activePeriod?.id || null}
       />
     </div>
   );

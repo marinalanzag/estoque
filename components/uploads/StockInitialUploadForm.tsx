@@ -7,6 +7,7 @@ interface StockInitialUploadFormProps {
   hideHeader?: boolean;
   hideFooter?: boolean;
   variant?: "standalone" | "embedded";
+  activePeriodId?: string | null;
 }
 
 interface StockImport {
@@ -22,6 +23,7 @@ export default function StockInitialUploadForm({
   hideHeader = false,
   hideFooter = false,
   variant = "standalone",
+  activePeriodId: initialActivePeriodId = null,
 }: StockInitialUploadFormProps) {
   const [mode, setMode] = useState<"upload" | "select">("upload");
   const [file, setFile] = useState<File | null>(null);
@@ -31,23 +33,9 @@ export default function StockInitialUploadForm({
   const [imports, setImports] = useState<StockImport[]>([]);
   const [selectedImportId, setSelectedImportId] = useState<string>("");
   const [loadingImports, setLoadingImports] = useState(false);
-  const [activePeriodId, setActivePeriodId] = useState<string | null>(null);
+  const [activePeriodId] = useState<string | null>(initialActivePeriodId);
 
   useEffect(() => {
-    // Carregar período ativo
-    const loadActivePeriod = async () => {
-      try {
-        const res = await fetch("/api/periods/active");
-        const data = await res.json();
-        if (data.ok && data.period) {
-          setActivePeriodId(data.period.id);
-        }
-      } catch (err) {
-        console.error("Erro ao carregar período ativo:", err);
-      }
-    };
-    loadActivePeriod();
-    
     if (mode === "select") {
       loadImports();
     }

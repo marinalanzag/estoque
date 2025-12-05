@@ -32,11 +32,14 @@ export default function InventoryFinalTable({
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<{ message: string; details?: string[] } | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<"sped" | "xlsx" | "csv">("sped");
   const [removeZeros, setRemoveZeros] = useState(false);
   const [removeNegatives, setRemoveNegatives] = useState(false);
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [showPeriodInput, setShowPeriodInput] = useState(false);
+  const [manualPeriod, setManualPeriod] = useState<{ year: string; month: string }>({ year: "", month: "" });
 
   const loadData = useCallback(async () => {
     try {
@@ -73,6 +76,8 @@ export default function InventoryFinalTable({
   const handleDownload = async () => {
     try {
       setDownloading(exportFormat);
+      setDownloadError(null);
+      setError(null);
       
       // Mapear formato para o esperado pela API
       const apiFormat = exportFormat === "sped" ? "sped_txt" : exportFormat;
@@ -83,11 +88,21 @@ export default function InventoryFinalTable({
         removeNegatives: removeNegatives.toString(),
       });
       
+      // Adicionar period_id se disponível
+      if (periodId) {
+        params.set("period_id", periodId);
+      }
+      
       const url = `/api/sped/${spedFileId}/export-inventory?${params.toString()}`;
       const res = await fetch(url);
 
       if (!res.ok) {
         const data = await res.json();
+        // Armazenar detalhes do erro para permitir download de arquivo com erro
+        setDownloadError({
+          message: data.error || "Erro ao gerar arquivo",
+          details: data.details || [],
+        });
         throw new Error(data.error || "Erro ao gerar arquivo");
       }
 
@@ -107,10 +122,62 @@ export default function InventoryFinalTable({
       document.body.removeChild(a);
       window.URL.revokeObjectURL(downloadUrl);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao fazer download");
+      // Erro já foi tratado acima, apenas não fazer nada aqui
     } finally {
       setDownloading(null);
     }
+  };
+
+  // Função para baixar arquivo com informações do erro
+  const handleDownloadWithError = () => {
+    if (!downloadError) return;
+
+    const errorContent = [
+      "=".repeat(80),
+      "ARQUIVO GERADO COM ERROS - REQUER AJUSTE MANUAL",
+      "=".repeat(80),
+      "",
+      `Data/Hora: ${new Date().toLocaleString("pt-BR")}`,
+      `Arquivo SPED: ${fileName}`,
+      `SPED ID: ${spedFileId}`,
+      periodId ? `Período ID: ${periodId}` : "Período: NÃO INFORMADO",
+      "",
+      "ERRO ENCONTRADO:",
+      downloadError.message,
+      "",
+      ...(downloadError.details && downloadError.details.length > 0
+        ? ["DETALHES DO ERRO:", ...downloadError.details.map((d: string) => `  - ${d}`), ""]
+        : []),
+      "INSTRUÇÕES:",
+      "1. Corrija o(s) erro(s) mencionado(s) acima",
+      "2. Se o período não foi encontrado, verifique:",
+      "   - Se o período existe no sistema",
+      "   - Se o período está ativo",
+      "   - Se o período está vinculado ao arquivo SPED",
+      "3. Após corrigir, tente gerar o arquivo novamente",
+      "",
+      "DADOS DISPONÍVEIS PARA AJUSTE MANUAL:",
+      `Total de itens no inventário: ${items.length}`,
+      "",
+      "Itens do inventário (formato CSV para fácil importação):",
+      "COD_ITEM;DESCR_ITEM;UNID;QTD;VL_UNIT;VL_ITEM",
+      ...items.map(
+        (item) =>
+          `${item.cod_item};${item.descr_item || "[Sem descrição]"};${item.unid || "UN"};${item.estoque_final.toFixed(6)};${item.unit_cost.toFixed(6)};${item.valor_estoque_final.toFixed(2)}`
+      ),
+      "",
+      "=".repeat(80),
+    ].join("\n");
+
+    const blob = new Blob([errorContent], { type: "text/plain; charset=utf-8" });
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = `inventario_final_${fileName}_ERRO_${new Date().toISOString().split("T")[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(downloadUrl);
   };
 
   if (loading) {
@@ -274,6 +341,62 @@ export default function InventoryFinalTable({
           </button>
         </div>
       </div>
+
+      {/* Mensagem de erro com opção de download */}
+      {downloadError && (
+        <div className="bg-yellow-50 border-2 border-yellow-400 rounded-lg p-6 space-y-4">
+          <div className="flex items-start gap-3">
+            <svg
+              className="h-6 w-6 text-yellow-600 mt-0.5 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-yellow-900 mb-2">
+                Erro ao gerar arquivo
+              </h3>
+              <p className="text-yellow-800 mb-2">{downloadError.message}</p>
+              {downloadError.details && downloadError.details.length > 0 && (
+                <ul className="list-disc list-inside text-yellow-800 text-sm space-y-1 mb-4">
+                  {downloadError.details.map((detail, index) => (
+                    <li key={index}>{detail}</li>
+                  ))}
+                </ul>
+              )}
+              <div className="bg-yellow-100 border border-yellow-300 rounded-md p-3 mt-4">
+                <p className="text-sm text-yellow-900 font-medium mb-2">
+                  📥 Opções para continuar:
+                </p>
+                <p className="text-sm text-yellow-800 mb-3">
+                  Você pode baixar um arquivo com as informações do erro e todos os dados disponíveis do inventário para ajuste manual.
+                </p>
+                <button
+                  onClick={handleDownloadWithError}
+                  className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 font-medium text-sm"
+                >
+                  Baixar arquivo com informações do erro
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={() => setDownloadError(null)}
+              className="text-yellow-600 hover:text-yellow-800"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Campo de busca */}
       <div className="bg-white border border-gray-200 rounded-lg p-4">
