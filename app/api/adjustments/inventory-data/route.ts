@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
     const stockInitial = await fetchAllRows(async (from, to) => {
       const { data, error } = await supabaseAdmin
         .from("stock_initial")
-        .select("cod_item, qtd, unit_cost")
+        .select("cod_item, qtd, unit_cost, unid")
         .range(from, to);
 
       if (error) throw new Error(`Erro ao buscar estoque inicial: ${error.message}`);
