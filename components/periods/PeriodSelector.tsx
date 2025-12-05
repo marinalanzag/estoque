@@ -382,13 +382,10 @@ function PeriodSelectorInner() {
       if (data.ok && data.period) {
         const newPeriodData = data.period;
         
-        // Fechar modal PRIMEIRO (sem esperar)
+        // Fechar modal IMEDIATAMENTE
         setShowCreateModal(false);
         setNewPeriod({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, name: "" });
         setCreating(false);
-        
-        // Disparar evento para atualizar outros componentes
-        window.dispatchEvent(new CustomEvent('period:created'));
         
         // Preparar URL do novo período
         const periodParam = `${newPeriodData.year}-${newPeriodData.month}`;
@@ -403,18 +400,21 @@ function PeriodSelectorInner() {
         params.set("period", periodParam);
         const newUrl = `${pathname}?${params.toString()}`;
         
-        // Recarregar períodos do servidor ANTES de fazer reload
-        // Isso garante que o dropdown tenha os dados atualizados
-        console.log("[PeriodSelector] 🔄 Recarregando períodos do servidor antes do reload...");
+        // Atualizar URL sem recarregar
+        router.replace(newUrl, { scroll: false });
+        
+        // Disparar evento para atualizar outros componentes
+        window.dispatchEvent(new CustomEvent('period:created'));
+        
+        // Recarregar períodos do servidor para atualizar dropdown
+        console.log("[PeriodSelector] 🔄 Recarregando períodos do servidor...");
         await loadPeriods();
         await loadActivePeriod();
         
-        // Aguardar um pouco para garantir que períodos foram carregados
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Forçar atualização do select
+        setRefreshKey(prev => prev + 1);
         
-        // Fazer reload completo da página
-        console.log("[PeriodSelector] 🔄 Fazendo reload completo da página...");
-        window.location.href = newUrl;
+        console.log("[PeriodSelector] ✅ Período criado e lista atualizada!");
       } else {
         const errorMsg = data.error || "Erro ao criar período";
         alert(`❌ Erro: ${errorMsg}`);
