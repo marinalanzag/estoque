@@ -10,29 +10,41 @@ export function getSupabaseAdmin(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+  // Log para debug (sem expor a chave completa)
+  const env = process.env.NODE_ENV || 'unknown';
+  const urlPreview = supabaseUrl ? supabaseUrl.substring(0, 30) + '...' : 'NÃO CONFIGURADO';
+  console.log(`[getSupabaseAdmin] Ambiente: ${env}`);
+  console.log(`[getSupabaseAdmin] URL do Supabase: ${urlPreview}`);
+  console.log(`[getSupabaseAdmin] Service Key configurada: ${!!supabaseKey}`);
+
   if (!supabaseUrl || !supabaseKey) {
-    throw new Error(
-      "Variáveis de ambiente do Supabase não configuradas. Verifique NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no arquivo .env.local"
-    );
+    const missingVars = [];
+    if (!supabaseUrl) missingVars.push('NEXT_PUBLIC_SUPABASE_URL');
+    if (!supabaseKey) missingVars.push('SUPABASE_SERVICE_ROLE_KEY');
+    
+    const errorMsg = `Variáveis de ambiente do Supabase não configuradas: ${missingVars.join(', ')}. Verifique no arquivo .env.local ou nas configurações do Vercel.`;
+    console.error(`[getSupabaseAdmin] ❌ ${errorMsg}`);
+    throw new Error(errorMsg);
   }
 
   // Validar formato da URL
   try {
     new URL(supabaseUrl);
   } catch {
-    throw new Error(
-      `URL do Supabase inválida: "${supabaseUrl}". Deve ser uma URL válida (ex: https://xxxxx.supabase.co)`
-    );
+    const errorMsg = `URL do Supabase inválida: "${supabaseUrl}". Deve ser uma URL válida (ex: https://xxxxx.supabase.co)`;
+    console.error(`[getSupabaseAdmin] ❌ ${errorMsg}`);
+    throw new Error(errorMsg);
   }
 
   try {
     supabaseAdminInstance = createClient(supabaseUrl, supabaseKey);
+    console.log(`[getSupabaseAdmin] ✅ Cliente Supabase criado com sucesso`);
     return supabaseAdminInstance;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
-    throw new Error(
-      `Erro ao criar cliente Supabase: ${errorMessage}. Verifique se a URL e a chave estão corretas.`
-    );
+    const errorMsg = `Erro ao criar cliente Supabase: ${errorMessage}. Verifique se a URL e a chave estão corretas.`;
+    console.error(`[getSupabaseAdmin] ❌ ${errorMsg}`);
+    throw new Error(errorMsg);
   }
 }
 
