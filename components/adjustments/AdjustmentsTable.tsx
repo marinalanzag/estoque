@@ -57,14 +57,13 @@ export default function AdjustmentsTable({
     console.log("[AdjustmentsTable] 🔄 IDs iniciais:", initialAdjustments.map(a => a.id));
     console.log("[AdjustmentsTable] 🔄 IDs atuais:", adjustments.map(a => a.id));
     
-    // Sempre atualizar com os dados do servidor quando initialAdjustments mudar
+    // CORREÇÃO Problema 02: Sempre atualizar com os dados do servidor quando initialAdjustments mudar
     // Isso garante que mudanças externas (ex: refresh da página) sejam refletidas
-    if (initialAdjustments.length > 0 || adjustments.length === 0) {
-      console.log("[AdjustmentsTable] ✅ Atualizando ajustes do servidor");
-      setAdjustments(initialAdjustments);
-      if (onAdjustmentsChange) {
-        onAdjustmentsChange(initialAdjustments);
-      }
+    // Removida a condição que impedia atualização quando initialAdjustments estava vazio
+    console.log("[AdjustmentsTable] ✅ Atualizando ajustes do servidor");
+    setAdjustments(initialAdjustments);
+    if (onAdjustmentsChange) {
+      onAdjustmentsChange(initialAdjustments);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAdjustments]); // Remover onAdjustmentsChange da dependência para evitar loops
@@ -191,11 +190,18 @@ export default function AdjustmentsTable({
       return;
     }
 
+    // Garantir que a quantidade seja salva exatamente como o usuário digitou
+    // Usar parseFloat para preservar decimais
     const qtd = parseFloat(qtdBaixada);
     if (isNaN(qtd) || qtd <= 0) {
       setError("Quantidade deve ser maior que zero");
       return;
     }
+    
+    // Log para debug - verificar se a quantidade está sendo preservada
+    console.log("[AdjustmentsTable] Quantidade digitada pelo usuário:", qtdBaixada);
+    console.log("[AdjustmentsTable] Quantidade parseada:", qtd);
+    console.log("[AdjustmentsTable] Quantidade será salva como:", qtd);
 
     const negativo = negativos.find((n) => n.cod_item === selectedNegativo);
     const positivo = positivos.find((p) => p.cod_item === selectedPositivo);
@@ -248,7 +254,7 @@ export default function AdjustmentsTable({
           sped_file_id: spedFileId,
           cod_negativo: selectedNegativo,
           cod_positivo: selectedPositivo,
-          qtd_baixada: qtd,
+          qtd_baixada: qtd, // Garantir que seja o valor exato digitado pelo usuário
           unit_cost: positivo.unit_cost,
         }),
       });
@@ -357,8 +363,9 @@ export default function AdjustmentsTable({
       const ajustesB = adjustments
         .filter((adj) => adj.cod_positivo === b.cod_item)
         .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
-      const disponivelA = a.estoque_final - ajustesA;
-      const disponivelB = b.estoque_final - ajustesB;
+      // CORREÇÃO Problema 01: item.estoque_final já subtrai ajustes_fornecidos na API
+      const disponivelA = a.estoque_final + (a.ajustes_fornecidos || 0) - ajustesA;
+      const disponivelB = b.estoque_final + (b.ajustes_fornecidos || 0) - ajustesB;
 
       switch (sortPositivos) {
         case "codigo-asc":
@@ -554,7 +561,12 @@ export default function AdjustmentsTable({
                   const ajustesFornecidos = adjustments
                     .filter((adj) => adj.cod_positivo === item.cod_item)
                     .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
-                  const disponivel = item.estoque_final - ajustesFornecidos;
+                  // CORREÇÃO Problema 01: item.estoque_final já subtrai ajustes_fornecidos na API
+                  // Então precisamos usar estoque_teorico ao invés de estoque_final
+                  // disponivel = estoque_teorico - ajustes_fornecidos (já calculados na API) - ajustes_fornecidos (do estado local)
+                  // Mas na verdade, o item.estoque_final da API já tem: estoque_teorico - ajustes_fornecidos
+                  // Então precisamos adicionar os ajustes_fornecidos de volta e subtrair os do estado local
+                  const disponivel = item.estoque_final + (item.ajustes_fornecidos || 0) - ajustesFornecidos;
                   return (
                     <option key={item.cod_item} value={item.cod_item}>
                       {item.cod_item} - {item.descr_item || "[Sem descrição]"} | 
@@ -573,7 +585,9 @@ export default function AdjustmentsTable({
                       const ajustesFornecidos = adjustments
                         .filter((adj) => adj.cod_positivo === selectedPositivoItem.cod_item)
                         .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
-                      return (selectedPositivoItem.estoque_final - ajustesFornecidos).toFixed(2);
+                      // CORREÇÃO Problema 01: item.estoque_final já subtrai ajustes_fornecidos na API
+                      const disponivel = selectedPositivoItem.estoque_final + (selectedPositivoItem.ajustes_fornecidos || 0) - ajustesFornecidos;
+                      return disponivel.toFixed(2);
                     })()} | 
                     <strong> Custo unitário:</strong> R$ {selectedPositivoItem.unit_cost.toFixed(2)}
                     {selectedPositivoItem.unidade && (
@@ -852,7 +866,9 @@ export default function AdjustmentsTable({
                     const ajustesFornecidos = adjustments
                       .filter((adj) => adj.cod_positivo === item.cod_item)
                       .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
-                    const disponivel = item.estoque_final - ajustesFornecidos;
+                    // CORREÇÃO Problema 01: item.estoque_final já subtrai ajustes_fornecidos na API
+                    // Então precisamos adicionar os ajustes_fornecidos de volta e subtrair os do estado local
+                    const disponivel = item.estoque_final + (item.ajustes_fornecidos || 0) - ajustesFornecidos;
                     const percentualUsado = item.estoque_final > 0 
                       ? (ajustesFornecidos / item.estoque_final) * 100 
                       : 0;
@@ -1068,7 +1084,8 @@ export default function AdjustmentsTable({
                       (acc, adj) => acc + Number(adj.qtd_baixada),
                       0
                     );
-                    const disponivel = positivo.estoque_final - totalFornecido;
+                    // CORREÇÃO Problema 01: item.estoque_final já subtrai ajustes_fornecidos na API
+                    const disponivel = positivo.estoque_final + (positivo.ajustes_fornecidos || 0) - totalFornecido;
                     const percentualUsado = positivo.estoque_final > 0 
                       ? (totalFornecido / positivo.estoque_final) * 100 
                       : 0;

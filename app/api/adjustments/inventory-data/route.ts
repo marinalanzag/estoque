@@ -170,15 +170,58 @@ export async function GET(req: NextRequest) {
     // Buscar ajustes já feitos (do arquivo SPED e do período ativo se existir)
     let adjustmentsQuery = supabaseAdmin
       .from("code_offset_adjustments")
-      .select("cod_negativo, cod_positivo, qtd_baixada, unit_cost, total_value")
+      .select("cod_negativo, cod_positivo, qtd_baixada, unit_cost, total_value, period_id")
       .eq("sped_file_id", spedFileId);
 
     // Se houver período ativo, filtrar por ele também OU por null (ajustes antigos sem período)
     if (activePeriod) {
       adjustmentsQuery = adjustmentsQuery.or(`period_id.eq.${activePeriod.id},period_id.is.null`);
+      console.log("[inventory-data] Filtrando ajustes por período:", activePeriod.id, "ou null");
+    } else {
+      console.log("[inventory-data] Nenhum período ativo, buscando todos os ajustes do SPED");
     }
 
     const { data: adjustments } = await adjustmentsQuery;
+    
+    // DEBUG: Log do sped_file_id e período usado
+    console.log("[inventory-data] 🔍 DEBUG - Parâmetros da query:", {
+      sped_file_id: spedFileId,
+      period_id_param: periodIdParam,
+      active_period_id: activePeriod?.id || "null",
+      total_ajustes_encontrados: adjustments?.length || 0,
+    });
+    
+    // DEBUG: Log para item 177
+    if (adjustments && adjustments.length > 0) {
+      const ajustes177 = adjustments.filter(adj => {
+        const codNeg = normalizeCodItem(adj.cod_negativo);
+        const codPos = normalizeCodItem(adj.cod_positivo);
+        return codNeg === "000177" || codPos === "000177";
+      });
+      
+      if (ajustes177.length > 0) {
+        console.log("[inventory-data] 🔍 DEBUG ITEM 177 - Ajustes encontrados:", {
+          total_ajustes: ajustes177.length,
+          sped_file_id_usado: spedFileId,
+          ajustes: ajustes177.map(adj => ({
+            cod_negativo: adj.cod_negativo,
+            cod_positivo: adj.cod_positivo,
+            qtd_baixada: adj.qtd_baixada,
+            period_id: adj.period_id || "null",
+          })),
+          soma_recebido: ajustes177
+            .filter(adj => normalizeCodItem(adj.cod_negativo) === "000177")
+            .reduce((sum, adj) => sum + Number(adj.qtd_baixada), 0),
+          soma_fornecido: ajustes177
+            .filter(adj => normalizeCodItem(adj.cod_positivo) === "000177")
+            .reduce((sum, adj) => sum + Number(adj.qtd_baixada), 0),
+        });
+      } else {
+        console.log("[inventory-data] 🔍 DEBUG ITEM 177 - Nenhum ajuste encontrado para o código 177 no SPED:", spedFileId);
+      }
+    } else {
+      console.log("[inventory-data] 🔍 DEBUG ITEM 177 - Nenhum ajuste encontrado no SPED:", spedFileId);
+    }
 
     // Consolidar por cod_item
     const inventory = new Map<
@@ -289,12 +332,41 @@ export async function GET(req: NextRequest) {
       const codPositivo = normalizeCodItem(adj.cod_positivo);
       const qtdBaixada = Number(adj.qtd_baixada);
 
+      // DEBUG: Log detalhado para item 177
+      const isItem177 = codNegativo === "000177" || codPositivo === "000177";
+      if (isItem177) {
+        console.log("[inventory-data] 🔍 DEBUG ITEM 177 - Processando ajuste:", {
+          cod_negativo_original: adj.cod_negativo,
+          cod_negativo_normalizado: codNegativo,
+          cod_positivo_original: adj.cod_positivo,
+          cod_positivo_normalizado: codPositivo,
+          qtd_baixada: qtdBaixada,
+          period_id: adj.period_id || "null",
+        });
+      }
+
       // Ajuste no código negativo (recebe quantidade)
       const negativo = inventory.get(codNegativo);
       if (negativo) {
+        if (isItem177) {
+          console.log("[inventory-data] 🔍 DEBUG ITEM 177 - Antes de somar ajuste recebido:", {
+            estoque_teorico: negativo.estoque_teorico,
+            ajustes_recebidos_antes: negativo.ajustes_recebidos,
+            ajustes_fornecidos: negativo.ajustes_fornecidos,
+            estoque_final_antes: negativo.estoque_final,
+          });
+        }
         negativo.ajustes_recebidos += qtdBaixada;
+        if (isItem177) {
+          console.log("[inventory-data] 🔍 DEBUG ITEM 177 - Depois de somar ajuste recebido:", {
+            ajustes_recebidos_depois: negativo.ajustes_recebidos,
+          });
+        }
       } else {
         // Se o código negativo não existe no inventário, criar entrada
+        if (isItem177) {
+          console.log("[inventory-data] 🔍 DEBUG ITEM 177 - Criando novo item no inventory (não existia)");
+        }
         inventory.set(codNegativo, {
           cod_item: codNegativo,
           unidade: null, // Será preenchido depois com dados do produto
@@ -313,13 +385,44 @@ export async function GET(req: NextRequest) {
       // Ajuste no código positivo (fornece quantidade)
       const positivo = inventory.get(codPositivo);
       if (positivo) {
+        if (isItem177) {
+          console.log("[inventory-data] 🔍 DEBUG ITEM 177 - Antes de somar ajuste fornecido:", {
+            estoque_teorico: positivo.estoque_teorico,
+            ajustes_recebidos: positivo.ajustes_recebidos,
+            ajustes_fornecidos_antes: positivo.ajustes_fornecidos,
+            estoque_final_antes: positivo.estoque_final,
+          });
+        }
         positivo.ajustes_fornecidos += qtdBaixada;
+        if (isItem177) {
+          console.log("[inventory-data] 🔍 DEBUG ITEM 177 - Depois de somar ajuste fornecido:", {
+            ajustes_fornecidos_depois: positivo.ajustes_fornecidos,
+          });
+        }
+      } else if (isItem177) {
+        console.log("[inventory-data] 🔍 DEBUG ITEM 177 - ⚠️ Item positivo não existe no inventory (não será criado)");
       }
     });
 
     // Calcular estoque final para todos
     inventory.forEach((item) => {
+      const estoqueFinalAnterior = item.estoque_final;
       item.estoque_final = item.estoque_teorico + item.ajustes_recebidos - item.ajustes_fornecidos;
+      
+      // DEBUG: Log detalhado para item 177
+      if (item.cod_item === "000177") {
+        console.log("[inventory-data] 🔍 DEBUG ITEM 177 - Cálculo final do estoque:", {
+          cod_item: item.cod_item,
+          estoque_inicial: item.estoque_inicial,
+          entradas: item.entradas,
+          saidas: item.saidas,
+          estoque_teorico: item.estoque_teorico,
+          ajustes_recebidos: item.ajustes_recebidos,
+          ajustes_fornecidos: item.ajustes_fornecidos,
+          estoque_final_calculado: item.estoque_final,
+          formula: `${item.estoque_teorico} + ${item.ajustes_recebidos} - ${item.ajustes_fornecidos} = ${item.estoque_final}`,
+        });
+      }
     });
 
     // Buscar descrições e unidades dos produtos do SPED

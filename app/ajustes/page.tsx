@@ -119,16 +119,20 @@ export default async function AjustesPage({ searchParams }: AjustesPageProps) {
   const selectedFile = spedFiles.find((f) => f.id === selectedFileId);
 
   // Buscar ajustes já feitos (do arquivo SPED e do período ativo se existir)
-  const adjustmentsQuery = supabaseAdmin
+  // CORREÇÃO Problema 04: Usar os mesmos filtros da API de relatório para garantir consistência
+  let adjustmentsQuery = supabaseAdmin
     .from("code_offset_adjustments")
     .select("id, cod_negativo, cod_positivo, qtd_baixada, unit_cost, total_value, created_at, period_id")
-    .eq("sped_file_id", selectedFileId)
-    .order("created_at", { ascending: false });
+    .eq("sped_file_id", selectedFileId);
 
-  // Se houver período ativo, filtrar por ele também para garantir que os ajustes sejam do período correto
+  // Se houver período ativo, filtrar por ele também OU por null (ajustes antigos sem período)
+  // Isso garante que os ajustes apareçam tanto na página quanto no relatório
   if (activePeriod) {
-    adjustmentsQuery.eq("period_id", activePeriod.id);
+    adjustmentsQuery = adjustmentsQuery.or(`period_id.eq.${activePeriod.id},period_id.is.null`);
+    console.log("[ajustes/page] Filtrando ajustes por período:", activePeriod.id, "ou null");
   }
+
+  adjustmentsQuery = adjustmentsQuery.order("created_at", { ascending: false });
 
   const { data: adjustments } = await adjustmentsQuery;
 
