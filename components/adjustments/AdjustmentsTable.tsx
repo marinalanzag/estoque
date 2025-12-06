@@ -57,13 +57,34 @@ export default function AdjustmentsTable({
     console.log("[AdjustmentsTable] 🔄 IDs iniciais:", initialAdjustments.map(a => a.id));
     console.log("[AdjustmentsTable] 🔄 IDs atuais:", adjustments.map(a => a.id));
     
-    // CORREÇÃO Problema 02: Sempre atualizar com os dados do servidor quando initialAdjustments mudar
-    // Isso garante que mudanças externas (ex: refresh da página) sejam refletidas
-    // Removida a condição que impedia atualização quando initialAdjustments estava vazio
-    console.log("[AdjustmentsTable] ✅ Atualizando ajustes do servidor");
-    setAdjustments(initialAdjustments);
-    if (onAdjustmentsChange) {
-      onAdjustmentsChange(initialAdjustments);
+    // CORREÇÃO Problema 02 + Cache: Proteger ajustes locais que ainda não estão no servidor
+    // Se o estado local tem mais ajustes que initialAdjustments, pode ser cache do servidor
+    // Preservar ajustes locais que foram criados recentemente
+    if (adjustments.length > initialAdjustments.length) {
+      console.log("[AdjustmentsTable] ⚠️ Estado local tem mais ajustes que servidor, pode ser cache. Preservando estado local.");
+      console.log("[AdjustmentsTable]   - Ajustes locais:", adjustments.length);
+      console.log("[AdjustmentsTable]   - Ajustes servidor:", initialAdjustments.length);
+      console.log("[AdjustmentsTable]   - IDs locais:", adjustments.map(a => a.id));
+      console.log("[AdjustmentsTable]   - IDs servidor:", initialAdjustments.map(a => a.id));
+      
+      // Fazer merge: manter ajustes locais que não estão no servidor
+      const merged = [...initialAdjustments];
+      adjustments.forEach(localAdj => {
+        if (!merged.find(a => a.id === localAdj.id)) {
+          console.log("[AdjustmentsTable]   - Preservando ajuste local:", localAdj.id);
+          merged.push(localAdj);
+        }
+      });
+      setAdjustments(merged);
+      if (onAdjustmentsChange) {
+        onAdjustmentsChange(merged);
+      }
+    } else {
+      console.log("[AdjustmentsTable] ✅ Atualizando ajustes do servidor");
+      setAdjustments(initialAdjustments);
+      if (onAdjustmentsChange) {
+        onAdjustmentsChange(initialAdjustments);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAdjustments]); // Remover onAdjustmentsChange da dependência para evitar loops
@@ -1225,6 +1246,9 @@ export default function AdjustmentsTable({
                   <th className="px-6 py-3 text-right text-xs font-bold text-blue-900 uppercase tracking-wider">
                     Valor Total
                   </th>
+                  <th className="px-6 py-3 text-center text-xs font-bold text-blue-900 uppercase tracking-wider">
+                    Ações
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -1280,15 +1304,71 @@ export default function AdjustmentsTable({
                         })}
                       </span>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm(
+                            `Tem certeza que deseja excluir este ajuste?\n\n` +
+                            `De: ${adj.cod_positivo} → Para: ${adj.cod_negativo}\n` +
+                            `Quantidade: ${Number(adj.qtd_baixada).toFixed(2)}\n` +
+                            `Valor: R$ ${Number(adj.total_value).toFixed(2)}\n\n` +
+                            `Esta ação não pode ser desfeita.`
+                          )) {
+                            return;
+                          }
+
+                          try {
+                            setError(null);
+                            const res = await fetch(`/api/adjustments/delete?id=${adj.id}`, {
+                              method: "DELETE",
+                            });
+
+                            const data = await res.json();
+
+                            if (!res.ok) {
+                              throw new Error(data.error || "Erro ao excluir ajuste");
+                            }
+
+                            console.log("[AdjustmentsTable] ✅ Ajuste excluído com sucesso:", adj.id);
+                            setSuccess(`✅ Ajuste excluído com sucesso!`);
+
+                            // Remover do estado local imediatamente
+                            setAdjustments((prev) => {
+                              const updated = prev.filter(a => a.id !== adj.id);
+                              if (onAdjustmentsChange) {
+                                onAdjustmentsChange(updated);
+                              }
+                              return updated;
+                            });
+
+                            // Recarregar dados do inventário para refletir a exclusão
+                            await loadInventoryData();
+
+                            // Revalidar a página no servidor
+                            if (onRefresh) {
+                              onRefresh();
+                            }
+                            await new Promise(resolve => setTimeout(resolve, 300));
+                            router.refresh();
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : "Erro ao excluir ajuste");
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm transition-colors shadow-sm"
+                        title="Excluir este ajuste"
+                      >
+                        🗑️ Excluir
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot className="bg-blue-50 border-t-2 border-blue-300">
                 <tr>
-                  <td colSpan={3} className="px-6 py-4 text-right text-sm font-bold text-blue-900">
+                  <td colSpan={5} className="px-6 py-4 text-right text-sm font-bold text-blue-900">
                     TOTAL GERAL:
                   </td>
-                  <td colSpan={2} className="px-6 py-4 text-right">
+                  <td className="px-6 py-4 text-right">
                     <span className="text-xl font-bold text-blue-900">
                       R$ {totalAjustes.toLocaleString("pt-BR", {
                         minimumFractionDigits: 2,

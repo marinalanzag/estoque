@@ -1,6 +1,10 @@
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 import AdjustmentsPageClient from "@/components/adjustments/AdjustmentsPageClient";
 
+// CORREÇÃO: Forçar renderização dinâmica para evitar cache
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 interface AjustesPageProps {
   searchParams?: {
     fileId?: string;
