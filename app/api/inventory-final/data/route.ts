@@ -19,20 +19,40 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const cookieStore = cookies();
-    const cookieImportIdsRaw =
-      cookieStore.get("selectedXmlImportIds")?.value ?? null;
-    const cookieImportIds = cookieImportIdsRaw
-      ? cookieImportIdsRaw.split(",").filter(Boolean)
-      : null;
-    const xmlImportIds = xmlImportIdsParam
-      ? xmlImportIdsParam.split(",").filter(Boolean)
-      : cookieImportIds ?? undefined;
+    // CRÍTICO: Se houver período ativo, priorizar XMLs base do período
+    // Isso garante que o inventário final use os mesmos XMLs que a aba de saídas
+    let xmlImportIds: string[] | undefined = undefined;
+    
+    if (periodId) {
+      const { getBaseXmlImportsForPeriod } = await import("@/lib/periods");
+      const baseXmlImportIds = await getBaseXmlImportsForPeriod(periodId);
+      
+      if (baseXmlImportIds.length > 0) {
+        xmlImportIds = baseXmlImportIds;
+        console.log(`[inventory-final/data] Usando ${baseXmlImportIds.length} XMLs base do período`);
+      }
+    }
+    
+    // Se não há XMLs base ou não há período, tentar usar parâmetro de URL ou cookie
+    if (!xmlImportIds || xmlImportIds.length === 0) {
+      const cookieStore = cookies();
+      const cookieImportIdsRaw =
+        cookieStore.get("selectedXmlImportIds")?.value ?? null;
+      const cookieImportIds = cookieImportIdsRaw
+        ? cookieImportIdsRaw.split(",").filter(Boolean)
+        : null;
+      
+      if (xmlImportIdsParam) {
+        xmlImportIds = xmlImportIdsParam.split(",").filter(Boolean);
+      } else if (cookieImportIds && cookieImportIds.length > 0) {
+        xmlImportIds = cookieImportIds;
+      }
+    }
 
     const { items, summary } = await getInventoryFinalData(
       spedFileId,
       periodId,
-      { xmlImportIds }
+      { xmlImportIds: xmlImportIds ?? null }
     );
 
     return NextResponse.json({
