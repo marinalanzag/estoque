@@ -4,6 +4,7 @@ import { normalizeCodItem, fetchProductDescriptions } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0; // Desabilita cache completamente
 
 const PAGE_SIZE = 1000;
 
