@@ -502,10 +502,25 @@ export async function GET(req: NextRequest) {
     }
 
     // Processar ajustes
+    console.log("[inventory-data] 📋 Total de ajustes encontrados:", adjustments?.length || 0);
+
     (adjustments ?? []).forEach((adj) => {
       const codNegativo = normalizeCodItem(adj.cod_negativo);
       const codPositivo = normalizeCodItem(adj.cod_positivo);
       const qtdBaixada = Number(adj.qtd_baixada);
+
+      // DEBUG: Log detalhado para item 011141
+      const isItem011141 = codNegativo === "011141" || codPositivo === "011141";
+      if (isItem011141) {
+        console.log("[inventory-data] 🎯 DEBUG ITEM 011141 - Processando ajuste:", {
+          cod_negativo_original: adj.cod_negativo,
+          cod_negativo_normalizado: codNegativo,
+          cod_positivo_original: adj.cod_positivo,
+          cod_positivo_normalizado: codPositivo,
+          qtd_baixada: qtdBaixada,
+          period_id: adj.period_id || "null",
+        });
+      }
 
       // DEBUG: Log detalhado para item 177
       const isItem177 = codNegativo === "000177" || codPositivo === "000177";
