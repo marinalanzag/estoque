@@ -73,7 +73,7 @@ export async function getInventoryFinalData(
     const recebidos = consolidado.ajustes.recebidos[row.cod_item] ?? 0;
     const baixas = consolidado.ajustes.baixasPositivas[row.cod_item] ?? 0;
     const estoqueTeorico = row.qtd_final;
-    const estoqueFinal = estoqueTeorico - baixas;
+    const estoqueFinal = estoqueTeorico + recebidos - baixas;
     const unitCost = row.custo_medio ?? 0;
     // IMPORTANTE: Valores negativos são ignorados (não podem ser usados para contagem)
     const valorEstoqueFinal = (estoqueFinal > 0 && unitCost > 0) ? unitCost * estoqueFinal : 0;
