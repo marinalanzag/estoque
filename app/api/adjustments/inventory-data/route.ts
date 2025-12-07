@@ -239,7 +239,7 @@ export async function GET(req: NextRequest) {
           console.log(`[inventory-data] 🔍 Item 011141 - Saídas encontradas neste lote:`, {
             quantidade_itens: saidas011141.length,
             total_qtd: totalQtd.toFixed(2),
-            xml_ids_usados: [...new Set(saidas011141.map(s => s.xml_import_id))].slice(0, 3).map(id => id.substring(0, 8) + "..."),
+            xml_ids_usados: Array.from(new Set(saidas011141.map(s => s.xml_import_id))).slice(0, 3).map(id => id.substring(0, 8) + "..."),
           });
         }
         
@@ -263,7 +263,7 @@ export async function GET(req: NextRequest) {
         }, 0);
         
         // Verificar quais XMLs estão sendo usados para o item 011141
-        const xmlIdsUsados = [...new Set(todasSaidas011141.map(s => s.xml_import_id))];
+        const xmlIdsUsados = Array.from(new Set(todasSaidas011141.map(s => s.xml_import_id)));
         const xmlsDetalhes = xmlImports.filter(x => xmlIdsUsados.includes(x.id));
         
         console.log(`[inventory-data] 🎯 Item 011141 - RESUMO FINAL DE SAÍDAS:`, {
