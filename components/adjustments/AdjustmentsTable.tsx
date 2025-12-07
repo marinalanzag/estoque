@@ -1210,21 +1210,81 @@ export default function AdjustmentsTable({
                   Todos os ajustes estão salvos no banco de dados e persistem mesmo após fechar a aba ou mudar de mês
                 </p>
               </div>
-              <button
-                onClick={async () => {
-                  console.log("[AdjustmentsTable] Botão Atualizar clicado");
-                  await loadAdjustments();
-                  await loadInventoryData();
-                  // Se houver função de refresh do componente pai, chamá-la também
-                  if (onRefresh) {
-                    onRefresh();
-                  }
-                }}
-                className="px-4 py-2 bg-white text-blue-600 rounded-md hover:bg-blue-50 font-medium text-sm transition-colors shadow-sm"
-                title="Atualizar lista de ajustes e dados do inventário"
-              >
-                🔄 Atualizar
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    try {
+                      const url = `/api/adjustments/export-xls?sped_file_id=${spedFileId}${activePeriodId ? `&period_id=${activePeriodId}` : ""}`;
+                      const response = await fetch(url);
+                      
+                      if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || "Erro ao exportar");
+                      }
+                      
+                      const blob = await response.blob();
+                      const downloadUrl = window.URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = downloadUrl;
+                      a.download = `correcoes_periodo.xlsx`;
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(downloadUrl);
+                      document.body.removeChild(a);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Erro ao exportar em Excel");
+                    }
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium text-sm transition-colors shadow-sm flex items-center gap-2"
+                  title="Exportar ajustes em formato Excel (XLS)"
+                >
+                  📊 Exportar XLS
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const url = `/api/adjustments/export-word?sped_file_id=${spedFileId}${activePeriodId ? `&period_id=${activePeriodId}` : ""}`;
+                      const response = await fetch(url);
+                      
+                      if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || "Erro ao exportar");
+                      }
+                      
+                      const blob = await response.blob();
+                      const downloadUrl = window.URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = downloadUrl;
+                      a.download = `correcoes_periodo.docx`;
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(downloadUrl);
+                      document.body.removeChild(a);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Erro ao exportar em Word");
+                    }
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-sm transition-colors shadow-sm flex items-center gap-2"
+                  title="Exportar ajustes em formato Word (DOCX)"
+                >
+                  📄 Exportar Word
+                </button>
+                <button
+                  onClick={async () => {
+                    console.log("[AdjustmentsTable] Botão Atualizar clicado");
+                    await loadAdjustments();
+                    await loadInventoryData();
+                    // Se houver função de refresh do componente pai, chamá-la também
+                    if (onRefresh) {
+                      onRefresh();
+                    }
+                  }}
+                  className="px-4 py-2 bg-white text-blue-600 rounded-md hover:bg-blue-50 font-medium text-sm transition-colors shadow-sm"
+                  title="Atualizar lista de ajustes e dados do inventário"
+                >
+                  🔄 Atualizar
+                </button>
+              </div>
             </div>
           </div>
           <div className="overflow-x-auto">
