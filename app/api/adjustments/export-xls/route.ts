@@ -6,63 +6,35 @@ import * as XLSX from "xlsx";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
-  try {
-    const supabaseAdmin = getSupabaseAdmin();
-    const searchParams = req.nextUrl.searchParams;
-    const spedFileId = searchParams.get("sped_file_id");
-    const periodId = searchParams.get("period_id");
+async function generateXLSFile(
+  adjustments: any[],
+  spedFileId: string,
+  periodId?: string | null
+) {
+  const supabaseAdmin = getSupabaseAdmin();
 
-    if (!spedFileId) {
-      return NextResponse.json(
-        { error: "sped_file_id é obrigatório" },
-        { status: 400 }
-      );
-    }
+  // Buscar período ativo ou usar period_id fornecido
+  let activePeriod: { id: string; name: string } | null = null;
+  
+  if (periodId) {
+    const { data: periodData } = await supabaseAdmin
+      .from("periods")
+      .select("id, name")
+      .eq("id", periodId)
+      .single();
+    activePeriod = periodData || null;
+  } else {
+    const { data: periodData } = await supabaseAdmin
+      .from("periods")
+      .select("id, name")
+      .eq("is_active", true)
+      .single();
+    activePeriod = periodData || null;
+  }
 
-    // Buscar período ativo ou usar period_id da query string
-    let activePeriod: { id: string; name: string } | null = null;
-    
-    if (periodId) {
-      const { data: periodData } = await supabaseAdmin
-        .from("periods")
-        .select("id, name")
-        .eq("id", periodId)
-        .single();
-      activePeriod = periodData || null;
-    } else {
-      const { data: periodData } = await supabaseAdmin
-        .from("periods")
-        .select("id, name")
-        .eq("is_active", true)
-        .single();
-      activePeriod = periodData || null;
-    }
-
-    // Buscar ajustes (do arquivo SPED e do período ativo se existir)
-    let adjustmentsQuery = supabaseAdmin
-      .from("code_offset_adjustments")
-      .select("id, cod_negativo, cod_positivo, qtd_baixada, unit_cost, total_value, created_at, period_id")
-      .eq("sped_file_id", spedFileId);
-
-    if (activePeriod) {
-      adjustmentsQuery = adjustmentsQuery.or(`period_id.eq.${activePeriod.id},period_id.is.null`);
-    }
-
-    adjustmentsQuery = adjustmentsQuery.order("created_at", { ascending: false });
-
-    const { data: adjustments, error: adjError } = await adjustmentsQuery;
-
-    if (adjError) {
-      throw new Error(`Erro ao buscar ajustes: ${adjError.message}`);
-    }
-
-    if (!adjustments || adjustments.length === 0) {
-      return NextResponse.json(
-        { error: "Nenhum ajuste encontrado para exportar" },
-        { status: 404 }
-      );
-    }
+  if (!adjustments || adjustments.length === 0) {
+    throw new Error("Nenhum ajuste encontrado para exportar");
+  }
 
     // Buscar todos os códigos únicos (positivos e negativos)
     const codigosUnicos = new Set<string>();
@@ -166,6 +138,109 @@ export async function GET(req: NextRequest) {
     // Nome do arquivo
     const periodoNomeSanitizado = periodoNome.replace(/[^a-zA-Z0-9]/g, "_");
     const fileName = `correcoes_periodo_${periodoNomeSanitizado}.xlsx`;
+
+  return {
+    buffer,
+    fileName,
+  };
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { adjustments, spedFileId, periodId } = body;
+
+    if (!adjustments || !Array.isArray(adjustments) || adjustments.length === 0) {
+      return NextResponse.json(
+        { error: "Lista de ajustes é obrigatória e não pode estar vazia" },
+        { status: 400 }
+      );
+    }
+
+    if (!spedFileId) {
+      return NextResponse.json(
+        { error: "sped_file_id é obrigatório" },
+        { status: 400 }
+      );
+    }
+
+    const { buffer, fileName } = await generateXLSFile(adjustments, spedFileId, periodId);
+
+    return new NextResponse(buffer, {
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${fileName}"`,
+      },
+    });
+  } catch (error) {
+    console.error("Erro ao exportar ajustes em XLS:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Erro desconhecido" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const supabaseAdmin = getSupabaseAdmin();
+    const searchParams = req.nextUrl.searchParams;
+    const spedFileId = searchParams.get("sped_file_id");
+    const periodId = searchParams.get("period_id");
+
+    if (!spedFileId) {
+      return NextResponse.json(
+        { error: "sped_file_id é obrigatório" },
+        { status: 400 }
+      );
+    }
+
+    // Buscar período ativo ou usar period_id da query string
+    let activePeriod: { id: string; name: string } | null = null;
+    
+    if (periodId) {
+      const { data: periodData } = await supabaseAdmin
+        .from("periods")
+        .select("id, name")
+        .eq("id", periodId)
+        .single();
+      activePeriod = periodData || null;
+    } else {
+      const { data: periodData } = await supabaseAdmin
+        .from("periods")
+        .select("id, name")
+        .eq("is_active", true)
+        .single();
+      activePeriod = periodData || null;
+    }
+
+    // Buscar ajustes (do arquivo SPED e do período ativo se existir)
+    let adjustmentsQuery = supabaseAdmin
+      .from("code_offset_adjustments")
+      .select("id, cod_negativo, cod_positivo, qtd_baixada, unit_cost, total_value, created_at, period_id")
+      .eq("sped_file_id", spedFileId);
+
+    if (activePeriod) {
+      adjustmentsQuery = adjustmentsQuery.or(`period_id.eq.${activePeriod.id},period_id.is.null`);
+    }
+
+    adjustmentsQuery = adjustmentsQuery.order("created_at", { ascending: false });
+
+    const { data: adjustments, error: adjError } = await adjustmentsQuery;
+
+    if (adjError) {
+      throw new Error(`Erro ao buscar ajustes: ${adjError.message}`);
+    }
+
+    if (!adjustments || adjustments.length === 0) {
+      return NextResponse.json(
+        { error: "Nenhum ajuste encontrado para exportar" },
+        { status: 404 }
+      );
+    }
+
+    const { buffer, fileName } = await generateXLSFile(adjustments, spedFileId, periodId);
 
     return new NextResponse(buffer, {
       headers: {

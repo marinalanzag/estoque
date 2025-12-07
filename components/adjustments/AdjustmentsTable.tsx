@@ -1214,8 +1214,23 @@ export default function AdjustmentsTable({
                 <button
                   onClick={async () => {
                     try {
-                      const url = `/api/adjustments/export-xls?sped_file_id=${spedFileId}${activePeriodId ? `&period_id=${activePeriodId}` : ""}`;
-                      const response = await fetch(url);
+                      if (adjustments.length === 0) {
+                        setError("Não há ajustes para exportar. Clique em 'Atualizar' primeiro.");
+                        return;
+                      }
+
+                      setError(null);
+                      const response = await fetch("/api/adjustments/export-xls", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          adjustments: adjustments,
+                          spedFileId: spedFileId,
+                          periodId: activePeriodId,
+                        }),
+                      });
                       
                       if (!response.ok) {
                         const error = await response.json();
@@ -1226,11 +1241,23 @@ export default function AdjustmentsTable({
                       const downloadUrl = window.URL.createObjectURL(blob);
                       const a = document.createElement("a");
                       a.href = downloadUrl;
-                      a.download = `correcoes_periodo.xlsx`;
+                      
+                      // Extrair nome do arquivo do header Content-Disposition se disponível
+                      const contentDisposition = response.headers.get("Content-Disposition");
+                      let fileName = "correcoes_periodo.xlsx";
+                      if (contentDisposition) {
+                        const fileNameMatch = contentDisposition.match(/filename="?(.+)"?/);
+                        if (fileNameMatch) {
+                          fileName = fileNameMatch[1];
+                        }
+                      }
+                      
+                      a.download = fileName;
                       document.body.appendChild(a);
                       a.click();
                       window.URL.revokeObjectURL(downloadUrl);
                       document.body.removeChild(a);
+                      setSuccess(`✅ Arquivo Excel exportado com ${adjustments.length} ajuste(s)!`);
                     } catch (err) {
                       setError(err instanceof Error ? err.message : "Erro ao exportar em Excel");
                     }
@@ -1243,8 +1270,23 @@ export default function AdjustmentsTable({
                 <button
                   onClick={async () => {
                     try {
-                      const url = `/api/adjustments/export-word?sped_file_id=${spedFileId}${activePeriodId ? `&period_id=${activePeriodId}` : ""}`;
-                      const response = await fetch(url);
+                      if (adjustments.length === 0) {
+                        setError("Não há ajustes para exportar. Clique em 'Atualizar' primeiro.");
+                        return;
+                      }
+
+                      setError(null);
+                      const response = await fetch("/api/adjustments/export-word", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          adjustments: adjustments,
+                          spedFileId: spedFileId,
+                          periodId: activePeriodId,
+                        }),
+                      });
                       
                       if (!response.ok) {
                         const error = await response.json();
@@ -1255,11 +1297,23 @@ export default function AdjustmentsTable({
                       const downloadUrl = window.URL.createObjectURL(blob);
                       const a = document.createElement("a");
                       a.href = downloadUrl;
-                      a.download = `correcoes_periodo.docx`;
+                      
+                      // Extrair nome do arquivo do header Content-Disposition se disponível
+                      const contentDisposition = response.headers.get("Content-Disposition");
+                      let fileName = "correcoes_periodo.docx";
+                      if (contentDisposition) {
+                        const fileNameMatch = contentDisposition.match(/filename="?(.+)"?/);
+                        if (fileNameMatch) {
+                          fileName = fileNameMatch[1];
+                        }
+                      }
+                      
+                      a.download = fileName;
                       document.body.appendChild(a);
                       a.click();
                       window.URL.revokeObjectURL(downloadUrl);
                       document.body.removeChild(a);
+                      setSuccess(`✅ Arquivo Word exportado com ${adjustments.length} ajuste(s)!`);
                     } catch (err) {
                       setError(err instanceof Error ? err.message : "Erro ao exportar em Word");
                     }
