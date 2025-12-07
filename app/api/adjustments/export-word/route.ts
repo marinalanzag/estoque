@@ -210,7 +210,13 @@ export async function GET(req: NextRequest) {
     const periodoNomeSanitizado = periodoNome.replace(/[^a-zA-Z0-9]/g, "_");
     const fileName = `correcoes_periodo_${periodoNomeSanitizado}.docx`;
 
-    return new NextResponse(buffer, {
+    // Converter Buffer para ArrayBuffer para compatibilidade com NextResponse
+    const arrayBuffer = buffer.buffer.slice(
+      buffer.byteOffset,
+      buffer.byteOffset + buffer.byteLength
+    );
+
+    return new NextResponse(arrayBuffer, {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
