@@ -206,6 +206,62 @@ export default function AdjustmentsTable({
     }
   };
 
+  const handleDeleteAdjustment = async (adjustmentId: string, codPositivo: string, codNegativo: string, qtdBaixada: number, totalValue: number) => {
+    if (!window.confirm(
+      `Tem certeza que deseja excluir este ajuste?\n\n` +
+      `De: ${codPositivo} → Para: ${codNegativo}\n` +
+      `Quantidade: ${Number(qtdBaixada).toFixed(2)}\n` +
+      `Valor: R$ ${Number(totalValue).toFixed(2)}\n\n` +
+      `Esta ação não pode ser desfeita.`
+    )) {
+      return;
+    }
+
+    try {
+      console.log("[DELETE] Iniciando exclusão do ajuste:", adjustmentId);
+      setError(null);
+
+      const res = await fetch(`/api/adjustments/delete?id=${adjustmentId}`, {
+        method: "DELETE",
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log("[DELETE] Response status:", res.status);
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error("[DELETE] Erro na resposta:", data.error);
+        throw new Error(data.error || "Erro ao excluir ajuste");
+      }
+
+      console.log("[DELETE] ✅ Ajuste excluído com sucesso");
+      setSuccess(`Ajuste excluído com sucesso!`);
+
+      // Remover do estado local
+      setAdjustments((prev) => {
+        const updated = prev.filter(a => a.id !== adjustmentId);
+        if (onAdjustmentsChange) {
+          onAdjustmentsChange(updated);
+        }
+        return updated;
+      });
+
+      // Recarregar dados
+      await loadInventoryData();
+      if (onRefresh) {
+        onRefresh();
+      }
+      router.refresh();
+    } catch (err) {
+      console.error("[DELETE] Erro:", err);
+      const errorMsg = err instanceof Error ? err.message : "Erro ao excluir ajuste";
+      setError(errorMsg);
+    }
+  };
+
   const handleCreateAdjustment = async () => {
     if (!selectedNegativo || !selectedPositivo || !qtdBaixada) {
       setError("Preencha todos os campos");
@@ -1362,9 +1418,7 @@ export default function AdjustmentsTable({
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {adjustments.map((adj, index) => {
-                  console.log(`[RENDER] Renderizando ajuste ${index + 1}/${adjustments.length}: ID=${adj.id.substring(0,8)}...`);
-                  return (
+                {adjustments.map((adj, index) => (
                   <tr
                     key={adj.id}
                     className={`${index === 0 ? 'bg-green-50 border-l-4 border-green-500' : 'hover:bg-gray-50'} transition-colors`}
@@ -1418,82 +1472,8 @@ export default function AdjustmentsTable({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <button
-                        onClick={async (e) => {
-                          console.log("🔴🔴🔴 BOTÃO DELETE CLICADO! 🔴🔴🔴", adj.id);
-                          e.preventDefault();
-                          e.stopPropagation();
-                          alert("TESTE: Botão foi clicado!");
-
-                          if (!window.confirm(
-                            `Tem certeza que deseja excluir este ajuste?\n\n` +
-                            `De: ${adj.cod_positivo} → Para: ${adj.cod_negativo}\n` +
-                            `Quantidade: ${Number(adj.qtd_baixada).toFixed(2)}\n` +
-                            `Valor: R$ ${Number(adj.total_value).toFixed(2)}\n\n` +
-                            `Esta ação não pode ser desfeita.`
-                          )) {
-                            return;
-                          }
-
-                          try {
-                            console.log("[DELETE] Iniciando exclusão do ajuste:", adj.id);
-                            setError(null);
-
-                            const url = `/api/adjustments/delete?id=${adj.id}`;
-                            console.log("[DELETE] URL:", url);
-
-                            const res = await fetch(url, {
-                              method: "DELETE",
-                              headers: {
-                                'Content-Type': 'application/json'
-                              }
-                            });
-
-                            console.log("[DELETE] Response status:", res.status);
-                            console.log("[DELETE] Response ok:", res.ok);
-
-                            const data = await res.json();
-                            console.log("[DELETE] Response data:", data);
-
-                            if (!res.ok) {
-                              console.error("[DELETE] Erro na resposta:", data.error);
-                              throw new Error(data.error || "Erro ao excluir ajuste");
-                            }
-
-                            console.log("[AdjustmentsTable] ✅ Ajuste excluído com sucesso:", adj.id);
-                            alert(`✅ Ajuste excluído com sucesso!\n\nO ajuste foi removido do banco de dados.`);
-                            setSuccess(`✅ Ajuste excluído com sucesso!`);
-
-                            // Remover do estado local imediatamente
-                            console.log("[DELETE] Removendo do estado local...");
-                            setAdjustments((prev) => {
-                              const updated = prev.filter(a => a.id !== adj.id);
-                              console.log("[DELETE] Ajustes restantes:", updated.length);
-                              if (onAdjustmentsChange) {
-                                onAdjustmentsChange(updated);
-                              }
-                              return updated;
-                            });
-
-                            // Recarregar dados do inventário para refletir a exclusão
-                            console.log("[DELETE] Recarregando inventário...");
-                            await loadInventoryData();
-
-                            // Revalidar a página no servidor
-                            console.log("[DELETE] Revalidando página...");
-                            if (onRefresh) {
-                              onRefresh();
-                            }
-                            await new Promise(resolve => setTimeout(resolve, 300));
-                            router.refresh();
-                            console.log("[DELETE] Processo completo!");
-                          } catch (err) {
-                            console.error("[DELETE] ERRO CAPTURADO:", err);
-                            const errorMsg = err instanceof Error ? err.message : "Erro ao excluir ajuste";
-                            console.error("[DELETE] Mensagem de erro:", errorMsg);
-                            alert(`❌ ERRO AO EXCLUIR:\n\n${errorMsg}\n\nVerifique o console para mais detalhes.`);
-                            setError(errorMsg);
-                          }
-                        }}
+                        type="button"
+                        onClick={() => handleDeleteAdjustment(adj.id, adj.cod_positivo, adj.cod_negativo, adj.qtd_baixada, adj.total_value)}
                         className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm transition-colors shadow-sm"
                         title="Excluir este ajuste"
                       >
@@ -1501,8 +1481,7 @@ export default function AdjustmentsTable({
                       </button>
                     </td>
                   </tr>
-                  );
-                })}
+                ))}
               </tbody>
               <tfoot className="bg-blue-50 border-t-2 border-blue-300">
                 <tr>
