@@ -79,11 +79,25 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ✅ CRÍTICO: Buscar XMLs base do período
+    let xmlImportIds: string[] | undefined = undefined;
+    if (periodId) {
+      const { getBaseXmlImportsForPeriod } = await import("@/lib/periods");
+      const baseXmlIds = await getBaseXmlImportsForPeriod(periodId);
+
+      if (baseXmlIds.length > 0) {
+        xmlImportIds = baseXmlIds;
+        console.log("[inventory-data] ✅ XMLs base encontrados:", baseXmlIds.length);
+      } else {
+        console.warn("[inventory-data] ⚠️ Nenhum XML base encontrado para o período");
+      }
+    }
+
     // ✅ CORREÇÃO: Passar stockImportId (ID do estoque inicial), NÃO periodId!
     const consolidado = await buildConsolidado(
       stockImportId, // ✅ ID do estoque inicial (não do período!)
       spedFileId,
-      { xmlImportIds: null } // null = usar XMLs base do período (mesma lógica do Consolidado)
+      { xmlImportIds } // ✅ Passar array de XMLs base (não null!)
     );
 
     console.log("[inventory-data] ✅ Consolidado construído:", {
