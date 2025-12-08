@@ -384,9 +384,9 @@ export default function AdjustmentsTable({
       const ajustesB = adjustments
         .filter((adj) => adj.cod_positivo === b.cod_item)
         .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
-      // CORREÇÃO Problema 01: item.estoque_final já subtrai ajustes_fornecidos na API
-      const disponivelA = a.estoque_final + (a.ajustes_fornecidos || 0) - ajustesA;
-      const disponivelB = b.estoque_final + (b.ajustes_fornecidos || 0) - ajustesB;
+      // Usar estoque teórico (base sem ajustes) menos ajustes já fornecidos no estado local
+      const disponivelA = a.estoque_teorico - ajustesA;
+      const disponivelB = b.estoque_teorico - ajustesB;
 
       switch (sortPositivos) {
         case "codigo-asc":
@@ -582,12 +582,8 @@ export default function AdjustmentsTable({
                   const ajustesFornecidos = adjustments
                     .filter((adj) => adj.cod_positivo === item.cod_item)
                     .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
-                  // CORREÇÃO Problema 01: item.estoque_final já subtrai ajustes_fornecidos na API
-                  // Então precisamos usar estoque_teorico ao invés de estoque_final
-                  // disponivel = estoque_teorico - ajustes_fornecidos (já calculados na API) - ajustes_fornecidos (do estado local)
-                  // Mas na verdade, o item.estoque_final da API já tem: estoque_teorico - ajustes_fornecidos
-                  // Então precisamos adicionar os ajustes_fornecidos de volta e subtrair os do estado local
-                  const disponivel = item.estoque_final + (item.ajustes_fornecidos || 0) - ajustesFornecidos;
+                  // Usar estoque teórico (base sem ajustes) menos ajustes já fornecidos no estado local
+                  const disponivel = item.estoque_teorico - ajustesFornecidos;
                   return (
                     <option key={item.cod_item} value={item.cod_item}>
                       {item.cod_item} - {item.descr_item || "[Sem descrição]"} |
@@ -606,8 +602,8 @@ export default function AdjustmentsTable({
                       const ajustesFornecidos = adjustments
                         .filter((adj) => adj.cod_positivo === selectedPositivoItem.cod_item)
                         .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
-                      // CORREÇÃO Problema 01: item.estoque_final já subtrai ajustes_fornecidos na API
-                      const disponivel = selectedPositivoItem.estoque_final + (selectedPositivoItem.ajustes_fornecidos || 0) - ajustesFornecidos;
+                      // Usar estoque teórico (base sem ajustes) menos ajustes já fornecidos no estado local
+                      const disponivel = selectedPositivoItem.estoque_teorico - ajustesFornecidos;
                       return disponivel.toFixed(2);
                     })()} |
                     <strong> Custo unitário:</strong> R$ {selectedPositivoItem.unit_cost.toFixed(2)}
@@ -887,9 +883,8 @@ export default function AdjustmentsTable({
                     const ajustesFornecidos = adjustments
                       .filter((adj) => adj.cod_positivo === item.cod_item)
                       .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
-                    // CORREÇÃO Problema 01: item.estoque_final já subtrai ajustes_fornecidos na API
-                    // Então precisamos adicionar os ajustes_fornecidos de volta e subtrair os do estado local
-                    const disponivel = item.estoque_final + (item.ajustes_fornecidos || 0) - ajustesFornecidos;
+                    // Usar estoque teórico (base sem ajustes) menos ajustes já fornecidos no estado local
+                    const disponivel = item.estoque_teorico - ajustesFornecidos;
                     const percentualUsado = item.estoque_final > 0
                       ? (ajustesFornecidos / item.estoque_final) * 100
                       : 0;
