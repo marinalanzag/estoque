@@ -1473,7 +1473,10 @@ export default function AdjustmentsTable({
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <button
                         type="button"
-                        onClick={() => handleDeleteAdjustment(adj.id, adj.cod_positivo, adj.cod_negativo, adj.qtd_baixada, adj.total_value)}
+                        onClick={() => {
+                          alert(`Clicou no ajuste: ${adj.id}`);
+                          handleDeleteAdjustment(adj.id, adj.cod_positivo, adj.cod_negativo, adj.qtd_baixada, adj.total_value);
+                        }}
                         className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm transition-colors shadow-sm"
                         title="Excluir este ajuste"
                       >
