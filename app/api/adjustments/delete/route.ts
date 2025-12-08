@@ -32,10 +32,31 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // Revalidar as rotas afetadas
-    revalidatePath("/inventario-final");
-    revalidatePath("/api/inventory-final/data");
-    revalidatePath("/movimentacoes/consolidado");
+    console.log(`[DELETE] ✅ Ajuste ${adjustmentId} deletado com sucesso`);
+
+    // ✅ CORREÇÃO: Revalidar TODAS as rotas afetadas pela exclusão
+    const rotasParaRevalidar = [
+      // Páginas
+      "/ajustes",
+      "/inventario-final",
+      "/movimentacoes/consolidado",
+
+      // APIs de dados
+      "/api/adjustments/inventory-data",
+      "/api/adjustments/list",
+      "/api/inventory-final/data",
+      "/api/consolidado/data",
+    ];
+
+    console.log(`[DELETE] Revalidando ${rotasParaRevalidar.length} rotas...`);
+    rotasParaRevalidar.forEach(rota => {
+      try {
+        revalidatePath(rota);
+        console.log(`[DELETE] ✅ Revalidado: ${rota}`);
+      } catch (err) {
+        console.error(`[DELETE] ⚠️ Erro ao revalidar ${rota}:`, err);
+      }
+    });
 
     return NextResponse.json({ ok: true });
   } catch (error) {

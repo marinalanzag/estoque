@@ -1416,6 +1416,9 @@ export default function AdjustmentsTable({
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <button
                         onClick={async () => {
+                          console.log("🔴🔴🔴 BOTÃO DELETE CLICADO! 🔴🔴🔴", adj.id);
+                          alert("TESTE: Botão foi clicado!");
+
                           if (!window.confirm(
                             `Tem certeza que deseja excluir este ajuste?\n\n` +
                             `De: ${adj.cod_positivo} → Para: ${adj.cod_negativo}\n` +
