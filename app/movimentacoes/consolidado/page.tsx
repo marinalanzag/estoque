@@ -412,12 +412,25 @@ export default async function MovimentacoesConsolidadoPage({
     console.log("[DEBUG ENTRADAS] totalDocumentItemsEntrada:", documentItemsEntrada?.length || 0);
   }
 
+  // ✅ CORREÇÃO: Se há período ativo e nenhum XML selecionado, usar XMLs base
+  // Isso garante que não haja contaminação de dados de outros períodos
+  let xmlsParaUsar = selectedXmlImportIds.length > 0 ? selectedXmlImportIds : undefined;
+
+  if (activePeriod && (!xmlsParaUsar || xmlsParaUsar.length === 0)) {
+    const { getBaseXmlImportsForPeriod } = await import("@/lib/periods");
+    const baseXmlImportIds = await getBaseXmlImportsForPeriod(activePeriod.id);
+
+    if (baseXmlImportIds.length > 0) {
+      xmlsParaUsar = baseXmlImportIds;
+      console.log(`[consolidado] Usando ${baseXmlImportIds.length} XMLs base do período para evitar contaminação entre períodos`);
+    }
+  }
+
   const consolidado = await buildConsolidado(
     selectedImportId ?? activePeriod?.id ?? null,
     selectedFileId,
     {
-      xmlImportIds:
-        selectedXmlImportIds.length > 0 ? selectedXmlImportIds : undefined,
+      xmlImportIds: xmlsParaUsar,
     }
   );
 
