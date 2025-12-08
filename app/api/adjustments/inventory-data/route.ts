@@ -24,8 +24,9 @@ export async function GET(req: NextRequest) {
     // Esta mudança garante que a aba Ajustes mostre os mesmos valores do Consolidado
     console.log("[inventory-data] 🔄 Usando buildConsolidado() para garantir consistência");
 
-    // Buscar período ativo ou usar period_id da query string
+    // ✅ CRÍTICO: Buscar período ativo E estoque inicial base
     let periodId: string | null = null;
+    let stockImportId: string | null = null;
 
     if (periodIdParam) {
       periodId = periodIdParam;
@@ -48,9 +49,39 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Usar buildConsolidado() com mesma lógica que as outras abas
+    // ✅ CRÍTICO: Buscar estoque inicial base do período
+    if (periodId) {
+      const { getBaseStockImportForPeriod } = await import("@/lib/periods");
+      const baseStockId = await getBaseStockImportForPeriod(periodId);
+
+      if (baseStockId) {
+        stockImportId = baseStockId;
+        console.log("[inventory-data] ✅ Estoque base encontrado:", baseStockId);
+      } else {
+        // Tentar qualquer estoque do período como fallback
+        const { data: anyStockImport } = await supabaseAdmin
+          .from("stock_initial_imports")
+          .select("id")
+          .eq("period_id", periodId)
+          .limit(1)
+          .single();
+
+        if (anyStockImport) {
+          stockImportId = anyStockImport.id;
+          console.warn("[inventory-data] ⚠️ Nenhum estoque base, usando qualquer estoque do período:", stockImportId);
+        } else {
+          console.error("[inventory-data] ❌ Nenhum estoque inicial encontrado para o período!");
+          return NextResponse.json(
+            { error: "Nenhum estoque inicial encontrado para o período ativo" },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    // ✅ CORREÇÃO: Passar stockImportId (ID do estoque inicial), NÃO periodId!
     const consolidado = await buildConsolidado(
-      periodId,
+      stockImportId, // ✅ ID do estoque inicial (não do período!)
       spedFileId,
       { xmlImportIds: null } // null = usar XMLs base do período (mesma lógica do Consolidado)
     );
