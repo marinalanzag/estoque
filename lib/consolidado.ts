@@ -762,6 +762,21 @@ export async function buildConsolidado(
     const qtdFinal = qtdInicial + qtdEntradas - qtdSaidas;
     const baseQty = qtdInicial + qtdEntradas;
     const custoMedio = baseQty > 0 ? (valorInicial + valorEntradas) / baseQty : null;
+
+    // DEBUG: Log para item 00013
+    if (cod === "000013") {
+      console.log("[CONSOLIDADO DEBUG 00013]", {
+        qtd_inicial: qtdInicial,
+        qtd_entradas: qtdEntradas,
+        qtd_saidas: qtdSaidas,
+        qtd_final: qtdFinal,
+        formula: `${qtdInicial} + ${qtdEntradas} - ${qtdSaidas} = ${qtdFinal}`,
+        valor_inicial: valorInicial,
+        valor_entradas: valorEntradas,
+        valor_saidas: valorSaidas,
+        custo_medio: custoMedio,
+      });
+    }
     // IMPORTANTE: Valores negativos são ignorados (não podem ser usados para contagem)
     const valorTotalCalculado =
       custoMedio !== null
