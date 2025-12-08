@@ -1390,6 +1390,13 @@ export default function AdjustmentsTable({
                 >
                   🔄 Atualizar
                 </button>
+                <button
+                  type="button"
+                  onClick={() => alert('TESTE: Botão de teste funcionou!')}
+                  className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 font-medium text-sm"
+                >
+                  ⚠️ TESTE
+                </button>
               </div>
             </div>
           </div>
