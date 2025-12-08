@@ -128,6 +128,7 @@ export default function AdjustmentsTable({
   const [searchNegativos, setSearchNegativos] = useState<string>("");
   const [sortNegativos, setSortNegativos] = useState<"codigo-asc" | "codigo-desc" | "descricao-asc" | "descricao-desc" | "saldo-asc" | "saldo-desc" | "status">("saldo-asc");
 
+
   const loadInventoryData = useCallback(async () => {
     try {
       setLoading(true);
@@ -1426,29 +1427,59 @@ export default function AdjustmentsTable({
                 >
                   🔄 Atualizar
                 </button>
-                <button
-                  type="button"
-                  onClick={() => alert('TESTE: Botão de teste funcionou!')}
-                  className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 font-medium text-sm"
-                >
-                  ⚠️ TESTE
-                </button>
-                {adjustments.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const primeiro = adjustments[0];
-                      alert(`Tentando excluir ajuste:\nID: ${primeiro.id}\nDe: ${primeiro.cod_positivo} → Para: ${primeiro.cod_negativo}`);
-                      handleDeleteAdjustment(primeiro.id, primeiro.cod_positivo, primeiro.cod_negativo, primeiro.qtd_baixada, primeiro.total_value);
-                    }}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm"
-                  >
-                    🗑️ EXCLUIR PRIMEIRO
-                  </button>
-                )}
               </div>
             </div>
           </div>
+
+          {/* Lista de ajustes para exclusão (alternativa aos botões da tabela) */}
+          {adjustments.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                🗑️ Excluir Ajustes (use esta lista se os botões da tabela não funcionarem)
+              </h3>
+              <div className="max-h-96 overflow-y-auto space-y-2">
+                {adjustments.map((adj) => (
+                  <div
+                    key={adj.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100"
+                  >
+                    <div className="flex-1 grid grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-500">Data:</span>{" "}
+                        <span className="font-medium">
+                          {new Date(adj.created_at).toLocaleDateString("pt-BR")}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">De:</span>{" "}
+                        <span className="font-bold text-green-700">{adj.cod_positivo}</span>
+                        {" → "}
+                        <span className="font-bold text-red-700">{adj.cod_negativo}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Qtd:</span>{" "}
+                        <span className="font-medium">{adj.qtd_baixada.toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Valor:</span>{" "}
+                        <span className="font-medium">
+                          R$ {adj.total_value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteAdjustment(adj.id, adj.cod_positivo, adj.cod_negativo, adj.qtd_baixada, adj.total_value)}
+                      className="ml-4 px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium whitespace-nowrap"
+                    >
+                      🗑️ Excluir
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-blue-50">
