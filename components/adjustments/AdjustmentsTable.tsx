@@ -162,8 +162,9 @@ export default function AdjustmentsTable({
   useEffect(() => {
     console.log("[AdjustmentsTable] useEffect inicial - carregando dados para spedFileId:", spedFileId, "periodId:", activePeriodId);
     loadInventoryData();
-    // Carregar ajustes ao montar o componente para garantir sincronização
-    loadAdjustments();
+    // ✅ CORREÇÃO: NÃO chamar loadAdjustments() aqui pois ele sobrescreve os initialAdjustments
+    // que vêm corretamente do servidor. O useEffect das linhas 53-89 já sincroniza initialAdjustments.
+    // loadAdjustments(); // ← COMENTADO para usar dados do servidor (184 ajustes)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spedFileId, activePeriodId]); // Carregar quando o SPED ou período mudar
 
@@ -1361,7 +1362,9 @@ export default function AdjustmentsTable({
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {adjustments.map((adj, index) => (
+                {adjustments.map((adj, index) => {
+                  console.log(`[RENDER] Renderizando ajuste ${index + 1}/${adjustments.length}: ID=${adj.id.substring(0,8)}...`);
+                  return (
                   <tr
                     key={adj.id}
                     className={`${index === 0 ? 'bg-green-50 border-l-4 border-green-500' : 'hover:bg-gray-50'} transition-colors`}
@@ -1415,8 +1418,10 @@ export default function AdjustmentsTable({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <button
-                        onClick={async () => {
+                        onClick={async (e) => {
                           console.log("🔴🔴🔴 BOTÃO DELETE CLICADO! 🔴🔴🔴", adj.id);
+                          e.preventDefault();
+                          e.stopPropagation();
                           alert("TESTE: Botão foi clicado!");
 
                           if (!window.confirm(
@@ -1496,7 +1501,8 @@ export default function AdjustmentsTable({
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
               <tfoot className="bg-blue-50 border-t-2 border-blue-300">
                 <tr>
