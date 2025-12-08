@@ -171,24 +171,37 @@ export default function AdjustmentsTable({
   // ✅ CORREÇÃO: Event delegation para botões de exclusão dentro da tabela
   useEffect(() => {
     const handleDeleteClick = (e: MouseEvent) => {
+      console.log("[EVENT] Clique detectado:", e.target);
       const target = e.target as HTMLElement;
       const button = target.closest('.delete-adjustment-btn') as HTMLButtonElement;
 
+      console.log("[EVENT] Botão encontrado:", button);
+
       if (button) {
+        console.log("[EVENT] Datasets do botão:", button.dataset);
         const id = button.dataset.adjustmentId;
         const codPositivo = button.dataset.codPositivo;
         const codNegativo = button.dataset.codNegativo;
         const qtdBaixada = parseFloat(button.dataset.qtdBaixada || '0');
         const totalValue = parseFloat(button.dataset.totalValue || '0');
 
+        console.log("[EVENT] ID:", id, "Positivo:", codPositivo, "Negativo:", codNegativo);
+
         if (id && codPositivo && codNegativo) {
+          console.log("[EVENT] ✅ Chamando handleDeleteAdjustment...");
           handleDeleteAdjustment(id, codPositivo, codNegativo, qtdBaixada, totalValue);
+        } else {
+          console.error("[EVENT] ❌ Dados incompletos!", { id, codPositivo, codNegativo });
         }
       }
     };
 
+    console.log("[EVENT] Event listener adicionado");
     document.addEventListener('click', handleDeleteClick);
-    return () => document.removeEventListener('click', handleDeleteClick);
+    return () => {
+      console.log("[EVENT] Event listener removido");
+      document.removeEventListener('click', handleDeleteClick);
+    };
   }, [adjustments]); // Re-attach quando adjustments mudar
 
   const loadAdjustments = async () => {
