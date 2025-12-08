@@ -87,14 +87,15 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // Separar em negativos e positivos
+    // ✅ CORREÇÃO: Separar por estoque_teorico (SEM ajustes de baixas)
+    // A aba Ajustes mostra o estoque ANTES das baixas para o usuário decidir quanto baixar
     const negativos = items
-      .filter((item) => item.estoque_final < 0)
-      .sort((a, b) => a.estoque_final - b.estoque_final);
+      .filter((item) => item.estoque_teorico < 0)
+      .sort((a, b) => a.estoque_teorico - b.estoque_teorico);
 
     const positivos = items
-      .filter((item) => item.estoque_final > 0)
-      .sort((a, b) => b.estoque_final - a.estoque_final);
+      .filter((item) => item.estoque_teorico > 0)
+      .sort((a, b) => b.estoque_teorico - a.estoque_teorico);
 
     // Log de verificação para item 00013
     const item00013 = items.find(i => i.cod_item === "000013");
