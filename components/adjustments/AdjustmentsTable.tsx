@@ -1469,10 +1469,14 @@ export default function AdjustmentsTable({
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleDeleteAdjustment(adj.id, adj.cod_positivo, adj.cod_negativo, adj.qtd_baixada, adj.total_value)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        alert(`Teste simples: ${adj.cod_negativo}`);
+                      }}
                       className="ml-4 px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium whitespace-nowrap"
                     >
-                      🗑️ Excluir
+                      🗑️ TESTE
                     </button>
                   </div>
                 ))}
