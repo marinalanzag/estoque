@@ -44,13 +44,17 @@ export default async function MovimentacoesConsolidadoPage({
 
   // Buscar período ativo usando helper
   const { getActivePeriodFromRequest, getBaseSpedFileForPeriod, getBaseXmlImportsForPeriod, getBaseStockImportForPeriod } = await import("@/lib/periods");
-  // Criar URLSearchParams a partir do searchParams para compatibilidade
-  const urlParams = new URLSearchParams();
-  if (searchParams?.fileId) urlParams.set("fileId", searchParams.fileId);
-  if (searchParams?.importId) urlParams.set("importId", searchParams.importId);
-  if (searchParams?.xmlImportId) urlParams.set("xmlImportId", searchParams.xmlImportId);
-  if (searchParams?.xmlGroupKey) urlParams.set("xmlGroupKey", searchParams.xmlGroupKey);
-  const activePeriod = await getActivePeriodFromRequest(urlParams);
+
+  // ✅ CRÍTICO: NÃO passar searchParams para getActivePeriodFromRequest
+  // Sempre buscar o período ativo diretamente do banco, sem influência de query params
+  const activePeriod = await getActivePeriodFromRequest();
+
+  console.log("[consolidado/page] ========================================");
+  console.log("[consolidado/page] 🔍 DEBUG PERÍODO ATIVO");
+  console.log("[consolidado/page] Período retornado:", activePeriod ? `${activePeriod.year}/${activePeriod.month} - ${activePeriod.name}` : "NENHUM");
+  console.log("[consolidado/page] ID do período:", activePeriod?.id || "null");
+  console.log("[consolidado/page] searchParams recebidos:", searchParams);
+  console.log("[consolidado/page] ========================================");
 
   // Buscar arquivos SPED do período ativo (ou todos se não houver período ativo)
   // IMPORTANTE: Usar a mesma lógica da aba Entradas
@@ -426,8 +430,28 @@ export default async function MovimentacoesConsolidadoPage({
     }
   }
 
+  // ✅ CRÍTICO: Passar selectedImportId (estoque inicial), NUNCA activePeriod.id
+  if (!selectedImportId) {
+    console.error("[consolidado/page] ❌ ERRO: selectedImportId está null!");
+    return (
+      <div className="max-w-6xl mx-auto p-6 space-y-4">
+        <h1 className="text-2xl font-semibold text-gray-900">
+          Consolidação de movimentos
+        </h1>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800 font-medium mb-2">
+            ❌ Erro: Estoque inicial não encontrado
+          </p>
+          <p className="text-red-700 text-sm">
+            O ID do estoque inicial está null. Verifique se há estoque inicial vinculado ao período.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const consolidado = await buildConsolidado(
-    selectedImportId ?? activePeriod?.id ?? null,
+    selectedImportId, // ✅ SEMPRE usar selectedImportId (ID do estoque inicial)
     selectedFileId,
     {
       xmlImportIds: xmlsParaUsar,

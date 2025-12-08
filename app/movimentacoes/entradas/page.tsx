@@ -196,12 +196,15 @@ export default async function MovEntradasPage({
 
   // Buscar período ativo usando helper
   const { getActivePeriodFromRequest, getBaseSpedFileForPeriod } = await import("@/lib/periods");
-  // Criar URLSearchParams a partir do searchParams para compatibilidade
-  const urlParams = new URLSearchParams();
-  if (searchParams?.fileId) {
-    urlParams.set("fileId", searchParams.fileId);
-  }
-  const activePeriod = await getActivePeriodFromRequest(urlParams);
+
+  // ✅ CORREÇÃO: NÃO passar searchParams - sempre buscar período ativo do banco
+  const activePeriod = await getActivePeriodFromRequest();
+
+  console.log("[entradas/page] ========================================");
+  console.log("[entradas/page] 🔍 DEBUG PERÍODO ATIVO");
+  console.log("[entradas/page] Período retornado:", activePeriod ? `${activePeriod.year}/${activePeriod.month} - ${activePeriod.name}` : "NENHUM");
+  console.log("[entradas/page] ID do período:", activePeriod?.id || "null");
+  console.log("[entradas/page] ========================================");
 
   // Buscar arquivos SPED do período ativo (ou todos se não houver período ativo)
   const spedQuery = supabaseAdmin

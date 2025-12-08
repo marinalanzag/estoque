@@ -55,6 +55,13 @@ export default async function MovimentacoesSaidasPage({
   // Buscar período ativo usando helper
   const activePeriod = await getActivePeriodFromRequest();
 
+  console.log("[saidas/page] ========================================");
+  console.log("[saidas/page] 🔍 DEBUG PERÍODO ATIVO");
+  console.log("[saidas/page] Período retornado:", activePeriod ? `${activePeriod.year}/${activePeriod.month} - ${activePeriod.name}` : "NENHUM");
+  console.log("[saidas/page] ID do período:", activePeriod?.id || "null");
+  console.log("[saidas/page] searchParams recebidos:", searchParams);
+  console.log("[saidas/page] ========================================");
+
   // Buscar arquivos SPED do período ativo (ou todos se não houver período ativo)
   const spedQuery = supabaseAdmin
     .from("sped_files")
@@ -214,11 +221,12 @@ export default async function MovimentacoesSaidasPage({
 
   let selectedImportIds: string[] | null = null;
 
-  // Priorizar XMLs base quando houver período ativo
-  if (baseXmlImportIds.length > 0 && !requestedGroupKey && !requestedImportIds) {
+  // ✅ CRÍTICO: Se há período ativo E XMLs base, SEMPRE usar XMLs base (ignorar seleções manuais)
+  // Isso garante que não haja contaminação de dados de outros períodos
+  if (activePeriod && baseXmlImportIds.length > 0) {
     selectedImportIds = baseXmlImportIds;
     console.log(
-      `[saidas/page] Usando XMLs base do período: ${selectedImportIds.length} imports`
+      `[saidas/page] ✅ Usando ${baseXmlImportIds.length} XMLs base do período (ignorando seleções manuais)`
     );
   } else if (selectedGroupKey) {
     const selectedGroup = groupedXmlImports.find(

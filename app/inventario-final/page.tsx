@@ -14,11 +14,15 @@ export default async function InventarioFinalPage({
 
   // CRÍTICO: Buscar período ativo e usar SPED base (mesma lógica da aba Entradas)
   const { getActivePeriodFromRequest, getBaseSpedFileForPeriod } = await import("@/lib/periods");
-  const urlParams = new URLSearchParams();
-  if (searchParams?.fileId) {
-    urlParams.set("fileId", searchParams.fileId);
-  }
-  const activePeriod = await getActivePeriodFromRequest(urlParams);
+
+  // ✅ CORREÇÃO: NÃO passar searchParams - sempre buscar período ativo do banco
+  const activePeriod = await getActivePeriodFromRequest();
+
+  console.log("[inventario-final/page] ========================================");
+  console.log("[inventario-final/page] 🔍 DEBUG PERÍODO ATIVO");
+  console.log("[inventario-final/page] Período retornado:", activePeriod ? `${activePeriod.year}/${activePeriod.month} - ${activePeriod.name}` : "NENHUM");
+  console.log("[inventario-final/page] ID do período:", activePeriod?.id || "null");
+  console.log("[inventario-final/page] ========================================");
 
   // Buscar arquivos SPED do período ativo (ou todos se não houver período ativo)
   const spedQuery = supabaseAdmin
