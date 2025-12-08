@@ -972,8 +972,9 @@ export default function AdjustmentsTable({
                     const ajustesFornecidos = adjustments
                       .filter((adj) => adj.cod_positivo === item.cod_item)
                       .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
-                    // Usar estoque teórico (base sem ajustes) menos ajustes já fornecidos no estado local
-                    const disponivel = item.estoque_teorico - ajustesFornecidos;
+                    // ✅ CORREÇÃO: Usar estoque_final (que já inclui ajustes) menos ajustes fornecidos locais
+                    // Isso evita contar ajustes duas vezes
+                    const disponivel = item.estoque_final - ajustesFornecidos;
                     const percentualUsado = item.estoque_final > 0
                       ? (ajustesFornecidos / item.estoque_final) * 100
                       : 0;
@@ -1015,7 +1016,7 @@ export default function AdjustmentsTable({
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
                           <span className="font-bold text-green-700">
-                            {item.estoque_teorico.toFixed(2)}
+                            {item.estoque_final.toFixed(2)}
                           </span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-right">

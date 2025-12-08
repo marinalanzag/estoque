@@ -60,12 +60,14 @@ export async function GET(req: NextRequest) {
       total_valor: consolidado.summary.totalValor,
     });
 
-    // Mapear dados do consolidado para formato esperado pela interface
-    // Isso garante consistência total entre Consolidado, Inventário Final e Ajustes
-
+    // ✅ Mapear dados do consolidado EXATAMENTE como está
+    // A aba Ajustes deve ser uma cópia fiel do Consolidado
     const items = consolidado.rows.map((row) => {
       const recebidos = consolidado.ajustes.recebidos[row.cod_item] ?? 0;
       const baixas = consolidado.ajustes.baixasPositivas[row.cod_item] ?? 0;
+
+      // IMPORTANTE: row.qtd_final já é o estoque teórico (inicial + entradas - saídas)
+      // Ajustes são aplicados DEPOIS disso para obter o estoque final
       const estoqueTeorico = row.qtd_final;
       const estoqueFinal = estoqueTeorico + recebidos - baixas;
 
@@ -76,12 +78,12 @@ export async function GET(req: NextRequest) {
         estoque_inicial: row.qtd_inicial,
         entradas: row.entradas,
         saidas: row.saidas,
-        estoque_teorico: estoqueTeorico,
+        estoque_teorico: estoqueTeorico, // = qtd_final do consolidado = qtd_inicial + entradas - saidas
         unit_cost: row.custo_medio ?? 0,
         valor_estoque: row.valor_total,
         ajustes_recebidos: recebidos,
         ajustes_fornecidos: baixas,
-        estoque_final: estoqueFinal,
+        estoque_final: estoqueFinal, // = estoque_teorico + recebidos - baixas
       };
     });
 
