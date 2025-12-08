@@ -128,6 +128,10 @@ export default function AdjustmentsTable({
   const [searchNegativos, setSearchNegativos] = useState<string>("");
   const [sortNegativos, setSortNegativos] = useState<"codigo-asc" | "codigo-desc" | "descricao-asc" | "descricao-desc" | "saldo-asc" | "saldo-desc" | "status">("saldo-asc");
 
+  // Busca de ajustes por código para exclusão
+  const [codigoBusca, setCodigoBusca] = useState<string>("");
+  const [ajustesEncontrados, setAjustesEncontrados] = useState<Adjustment[]>([]);
+
 
   const loadInventoryData = useCallback(async () => {
     try {
@@ -208,6 +212,29 @@ export default function AdjustmentsTable({
     }
   };
 
+  const buscarAjustesPorCodigo = () => {
+    const codigoNormalizado = codigoBusca.trim().padStart(6, '0');
+
+    if (!codigoNormalizado) {
+      setError("Digite um código para buscar");
+      return;
+    }
+
+    const encontrados = adjustments.filter(adj =>
+      adj.cod_negativo === codigoNormalizado ||
+      adj.cod_positivo === codigoNormalizado
+    );
+
+    setAjustesEncontrados(encontrados);
+
+    if (encontrados.length === 0) {
+      setError(`Nenhum ajuste encontrado para o código ${codigoNormalizado}`);
+    } else {
+      setError(null);
+      setSuccess(`Encontrados ${encontrados.length} ajuste(s) para o código ${codigoNormalizado}`);
+    }
+  };
+
   const handleDeleteAdjustment = async (adjustmentId: string, codPositivo: string, codNegativo: string, qtdBaixada: number, totalValue: number) => {
     if (!window.confirm(
       `Tem certeza que deseja excluir este ajuste?\n\n` +
@@ -250,6 +277,9 @@ export default function AdjustmentsTable({
         }
         return updated;
       });
+
+      // Remover dos resultados de busca também
+      setAjustesEncontrados(prev => prev.filter(a => a.id !== adjustmentId));
 
       // Recarregar dados
       await loadInventoryData();
@@ -1394,6 +1424,92 @@ export default function AdjustmentsTable({
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Busca de ajustes por código para exclusão */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">
+              🔍 Buscar Ajuste por Código para Excluir
+            </h3>
+            <div className="flex gap-3 mb-4">
+              <input
+                type="text"
+                value={codigoBusca}
+                onChange={(e) => setCodigoBusca(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && buscarAjustesPorCodigo()}
+                placeholder="Digite o código (ex: 011141)"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={buscarAjustesPorCodigo}
+                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
+              >
+                Buscar
+              </button>
+              {ajustesEncontrados.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAjustesEncontrados([]);
+                    setCodigoBusca("");
+                    setSuccess(null);
+                  }}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 font-medium"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+
+            {/* Resultados da busca */}
+            {ajustesEncontrados.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-gray-700">
+                  Encontrados {ajustesEncontrados.length} ajuste(s):
+                </p>
+                {ajustesEncontrados.map((adj) => (
+                  <div
+                    key={adj.id}
+                    className="flex items-center justify-between p-4 bg-gray-50 border border-gray-300 rounded-lg hover:bg-gray-100"
+                  >
+                    <div className="flex-1 grid grid-cols-4 gap-4">
+                      <div>
+                        <span className="text-xs text-gray-500 block">Data</span>
+                        <span className="text-sm font-medium text-gray-900">
+                          {new Date(adj.created_at).toLocaleDateString("pt-BR")} {new Date(adj.created_at).toLocaleTimeString("pt-BR")}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500 block">Transferência</span>
+                        <span className="text-sm font-bold text-green-700">{adj.cod_positivo}</span>
+                        <span className="text-gray-500 mx-1">→</span>
+                        <span className="text-sm font-bold text-red-700">{adj.cod_negativo}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500 block">Quantidade</span>
+                        <span className="text-sm font-medium text-gray-900">
+                          {adj.qtd_baixada.toFixed(2)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500 block">Valor</span>
+                        <span className="text-sm font-medium text-gray-900">
+                          R$ {adj.total_value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteAdjustment(adj.id, adj.cod_positivo, adj.cod_negativo, adj.qtd_baixada, adj.total_value)}
+                      className="ml-4 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium whitespace-nowrap"
+                    >
+                      🗑️ Excluir
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="overflow-x-auto">
