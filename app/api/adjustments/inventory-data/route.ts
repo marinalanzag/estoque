@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
     // Log de verificação para item 00013
     const item00013 = items.find(i => i.cod_item === "000013");
     if (item00013) {
-      console.log("[inventory-data] 🎯 Item 00013 - Valores do Consolidado:", {
+      console.log("[inventory-data] 🎯 Item 00013 - Valores Mapeados:", {
         estoque_inicial: item00013.estoque_inicial,
         entradas: item00013.entradas,
         saidas: item00013.saidas,
@@ -105,6 +105,19 @@ export async function GET(req: NextRequest) {
         ajustes_recebidos: item00013.ajustes_recebidos,
         ajustes_fornecidos: item00013.ajustes_fornecidos,
         estoque_final: item00013.estoque_final,
+        formula_teorico: `${item00013.estoque_inicial} + ${item00013.entradas} - ${item00013.saidas} = ${item00013.estoque_inicial + item00013.entradas - item00013.saidas}`,
+        formula_final: `${item00013.estoque_teorico} + ${item00013.ajustes_recebidos} - ${item00013.ajustes_fornecidos} = ${item00013.estoque_final}`,
+      });
+    }
+
+    // Log do que será retornado na resposta
+    const item00013Response = positivos.find(i => i.cod_item === "000013") || negativos.find(i => i.cod_item === "000013");
+    if (item00013Response) {
+      console.log("[inventory-data] 📤 Item 00013 - O QUE SERÁ ENVIADO AO FRONTEND:", {
+        cod_item: item00013Response.cod_item,
+        estoque_teorico: item00013Response.estoque_teorico,
+        estoque_final: item00013Response.estoque_final,
+        esta_em: item00013Response.estoque_final > 0 ? "POSITIVOS" : "NEGATIVOS",
       });
     }
 
