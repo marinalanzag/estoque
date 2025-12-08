@@ -168,6 +168,29 @@ export default function AdjustmentsTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spedFileId, activePeriodId]); // Carregar quando o SPED ou período mudar
 
+  // ✅ CORREÇÃO: Event delegation para botões de exclusão dentro da tabela
+  useEffect(() => {
+    const handleDeleteClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const button = target.closest('.delete-adjustment-btn') as HTMLButtonElement;
+
+      if (button) {
+        const id = button.dataset.adjustmentId;
+        const codPositivo = button.dataset.codPositivo;
+        const codNegativo = button.dataset.codNegativo;
+        const qtdBaixada = parseFloat(button.dataset.qtdBaixada || '0');
+        const totalValue = parseFloat(button.dataset.totalValue || '0');
+
+        if (id && codPositivo && codNegativo) {
+          handleDeleteAdjustment(id, codPositivo, codNegativo, qtdBaixada, totalValue);
+        }
+      }
+    };
+
+    document.addEventListener('click', handleDeleteClick);
+    return () => document.removeEventListener('click', handleDeleteClick);
+  }, [adjustments]); // Re-attach quando adjustments mudar
+
   const loadAdjustments = async () => {
     try {
       console.log("[AdjustmentsTable] 🔄 Iniciando loadAdjustments para spedFileId:", spedFileId);
@@ -1493,12 +1516,13 @@ export default function AdjustmentsTable({
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <button
                         type="button"
-                        onClick={() => {
-                          alert(`Clicou no ajuste: ${adj.id}`);
-                          handleDeleteAdjustment(adj.id, adj.cod_positivo, adj.cod_negativo, adj.qtd_baixada, adj.total_value);
-                        }}
-                        className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm transition-colors shadow-sm"
+                        className="delete-adjustment-btn px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm transition-colors shadow-sm"
                         title="Excluir este ajuste"
+                        data-adjustment-id={adj.id}
+                        data-cod-positivo={adj.cod_positivo}
+                        data-cod-negativo={adj.cod_negativo}
+                        data-qtd-baixada={adj.qtd_baixada}
+                        data-total-value={adj.total_value}
                       >
                         🗑️ Excluir
                       </button>
