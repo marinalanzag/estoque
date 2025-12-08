@@ -56,7 +56,7 @@ export default function AdjustmentsTable({
     console.log("[AdjustmentsTable] 🔄 Ajustes atuais no estado:", adjustments.length);
     console.log("[AdjustmentsTable] 🔄 IDs iniciais:", initialAdjustments.map(a => a.id));
     console.log("[AdjustmentsTable] 🔄 IDs atuais:", adjustments.map(a => a.id));
-    
+
     // CORREÇÃO Problema 02 + Cache: Proteger ajustes locais que ainda não estão no servidor
     // Se o estado local tem mais ajustes que initialAdjustments, pode ser cache do servidor
     // Preservar ajustes locais que foram criados recentemente
@@ -66,7 +66,7 @@ export default function AdjustmentsTable({
       console.log("[AdjustmentsTable]   - Ajustes servidor:", initialAdjustments.length);
       console.log("[AdjustmentsTable]   - IDs locais:", adjustments.map(a => a.id));
       console.log("[AdjustmentsTable]   - IDs servidor:", initialAdjustments.map(a => a.id));
-      
+
       // Fazer merge: manter ajustes locais que não estão no servidor
       const merged = [...initialAdjustments];
       adjustments.forEach(localAdj => {
@@ -88,7 +88,7 @@ export default function AdjustmentsTable({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialAdjustments]); // Remover onAdjustmentsChange da dependência para evitar loops
-  
+
   // Recarregar ajustes quando a página recebe foco (usuário volta para a aba)
   useEffect(() => {
     const handleFocus = () => {
@@ -100,7 +100,7 @@ export default function AdjustmentsTable({
         onRefresh();
       }
     };
-    
+
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,11 +119,11 @@ export default function AdjustmentsTable({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  
+
   // Filtros e busca para positivos
   const [searchPositivos, setSearchPositivos] = useState<string>("");
   const [sortPositivos, setSortPositivos] = useState<"codigo-asc" | "codigo-desc" | "descricao-asc" | "descricao-desc" | "quantidade-desc" | "quantidade-asc" | "usado-desc" | "usado-asc" | "disponivel-desc" | "disponivel-asc">("quantidade-desc");
-  
+
   // Filtros e busca para negativos
   const [searchNegativos, setSearchNegativos] = useState<string>("");
   const [sortNegativos, setSortNegativos] = useState<"codigo-asc" | "codigo-desc" | "descricao-asc" | "descricao-desc" | "saldo-asc" | "saldo-desc" | "status">("saldo-asc");
@@ -170,14 +170,14 @@ export default function AdjustmentsTable({
   const loadAdjustments = async () => {
     try {
       console.log("[AdjustmentsTable] 🔄 Iniciando loadAdjustments para spedFileId:", spedFileId);
-      
+
       console.log("[AdjustmentsTable] Período ativo recebido via props:", activePeriodId);
-      
+
       let url = `/api/adjustments/list?sped_file_id=${spedFileId}`;
       if (activePeriodId) {
         url += `&period_id=${activePeriodId}`;
       }
-      
+
       console.log("[AdjustmentsTable] Buscando ajustes na URL:", url);
       const res = await fetch(url, {
         cache: 'no-store', // Forçar busca sempre atualizada
@@ -187,10 +187,10 @@ export default function AdjustmentsTable({
       if (res.ok && data.adjustments) {
         console.log("[AdjustmentsTable] ✅ Ajustes recarregados do banco:", data.adjustments.length);
         console.log("[AdjustmentsTable] IDs dos ajustes:", data.adjustments.map((a: Adjustment) => a.id));
-        
+
         // Sempre atualizar o estado com os dados do banco
         setAdjustments(data.adjustments);
-        
+
         // Notificar componente pai sobre a mudança
         if (onAdjustmentsChange) {
           console.log("[AdjustmentsTable] Notificando componente pai sobre ajustes recarregados");
@@ -218,7 +218,7 @@ export default function AdjustmentsTable({
       setError("Quantidade deve ser maior que zero");
       return;
     }
-    
+
     // Log para debug - verificar se a quantidade está sendo preservada
     console.log("[AdjustmentsTable] Quantidade digitada pelo usuário:", qtdBaixada);
     console.log("[AdjustmentsTable] Quantidade parseada:", qtd);
@@ -235,9 +235,9 @@ export default function AdjustmentsTable({
     // Verificar se as unidades são diferentes
     const unidadeNegativo = negativo.unidade || null;
     const unidadePositivo = positivo.unidade || null;
-    const unidadesDiferentes = unidadeNegativo && unidadePositivo && 
-                               unidadeNegativo.toLowerCase() !== unidadePositivo.toLowerCase();
-    
+    const unidadesDiferentes = unidadeNegativo && unidadePositivo &&
+      unidadeNegativo.toLowerCase() !== unidadePositivo.toLowerCase();
+
     // Se quantidade excede o saldo disponível
     if (qtd > positivo.estoque_final) {
       // Se as unidades são diferentes, mostrar aviso mas permitir
@@ -288,16 +288,16 @@ export default function AdjustmentsTable({
 
       console.log("[AdjustmentsTable] ✅ Ajuste salvo com sucesso:", data.adjustment);
       setSuccess(`✅ Ajuste criado e salvo com sucesso! Código ${data.adjustment.cod_positivo} → ${data.adjustment.cod_negativo} - Qtd: ${data.adjustment.qtd_baixada}`);
-      
+
       // Limpar formulário primeiro
       setSelectedNegativo(null);
       setSelectedPositivo(null);
       setQtdBaixada("");
-      
+
       // Adicionar o novo ajuste ao estado IMEDIATAMENTE para feedback visual
       const newAdjustment = data.adjustment;
       console.log("[AdjustmentsTable] Novo ajuste recebido do servidor:", newAdjustment);
-      
+
       // Atualizar estado e notificar componente pai em uma única operação
       setAdjustments((prev) => {
         // Verificar se já não existe (evitar duplicação)
@@ -309,39 +309,39 @@ export default function AdjustmentsTable({
         console.log("[AdjustmentsTable] Adicionando novo ajuste ao estado:", newAdjustment.id);
         const updated = [newAdjustment, ...prev];
         console.log("[AdjustmentsTable] Total de ajustes após adicionar:", updated.length);
-        
+
         // Notificar componente pai com o novo estado
         if (onAdjustmentsChange) {
           onAdjustmentsChange(updated);
         }
-        
+
         return updated;
       });
-      
+
       // Pequeno delay para garantir que o banco processou a inserção
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Recarregar ajustes do banco para garantir sincronização completa
       console.log("[AdjustmentsTable] Recarregando ajustes do banco...");
       await loadAdjustments();
-      
+
       // Recarregar dados do inventário para refletir os ajustes
       console.log("[AdjustmentsTable] Recarregando dados do inventário...");
       await loadInventoryData();
-      
+
       // Revalidar a página no servidor para garantir que os dados sejam atualizados
       console.log("[AdjustmentsTable] Revalidando página no servidor...");
-      
+
       // Se houver função de refresh do componente pai, chamá-la primeiro
       if (onRefresh) {
         console.log("[AdjustmentsTable] Chamando onRefresh do componente pai...");
         onRefresh();
       }
-      
+
       // Aguardar um pouco antes de fazer o refresh do router para garantir que o servidor processou
       await new Promise(resolve => setTimeout(resolve, 300));
       router.refresh();
-      
+
       console.log("[AdjustmentsTable] ✅ Processo de salvamento concluído");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido");
@@ -487,7 +487,7 @@ export default function AdjustmentsTable({
       // Tentar encontrar sugestões baseadas no código ou descrição
       const codNegativo = selectedNegativoItem.cod_item;
       const descrNegativo = (selectedNegativoItem.descr_item || "").toLowerCase();
-      
+
       // Se não há busca ativa, tentar sugerir automaticamente
       if (!searchPositivos.trim()) {
         // Extrair prefixo do código (primeiros 3-4 caracteres)
@@ -590,8 +590,8 @@ export default function AdjustmentsTable({
                   const disponivel = item.estoque_final + (item.ajustes_fornecidos || 0) - ajustesFornecidos;
                   return (
                     <option key={item.cod_item} value={item.cod_item}>
-                      {item.cod_item} - {item.descr_item || "[Sem descrição]"} | 
-                      Disponível: {disponivel.toFixed(2)} | 
+                      {item.cod_item} - {item.descr_item || "[Sem descrição]"} |
+                      Disponível: {disponivel.toFixed(2)} |
                       Custo: R$ {item.unit_cost.toFixed(2)}
                     </option>
                   );
@@ -609,22 +609,22 @@ export default function AdjustmentsTable({
                       // CORREÇÃO Problema 01: item.estoque_final já subtrai ajustes_fornecidos na API
                       const disponivel = selectedPositivoItem.estoque_final + (selectedPositivoItem.ajustes_fornecidos || 0) - ajustesFornecidos;
                       return disponivel.toFixed(2);
-                    })()} | 
+                    })()} |
                     <strong> Custo unitário:</strong> R$ {selectedPositivoItem.unit_cost.toFixed(2)}
                     {selectedPositivoItem.unidade && (
                       <> | <strong>Unidade:</strong> {selectedPositivoItem.unidade}</>
                     )}
                   </p>
                 </div>
-                {selectedNegativoItem && selectedPositivoItem.unidade && selectedNegativoItem.unidade && 
-                 selectedPositivoItem.unidade.toLowerCase() !== selectedNegativoItem.unidade.toLowerCase() && (
-                  <div className="p-2 bg-yellow-50 border border-yellow-300 rounded text-xs">
-                    <p className="text-yellow-800">
-                      ⚠️ <strong>Atenção:</strong> Unidades diferentes detectadas (Positivo: {selectedPositivoItem.unidade}, Negativo: {selectedNegativoItem.unidade}). 
-                      A baixa pode exceder o saldo disponível devido à conversão de unidades.
-                    </p>
-                  </div>
-                )}
+                {selectedNegativoItem && selectedPositivoItem.unidade && selectedNegativoItem.unidade &&
+                  selectedPositivoItem.unidade.toLowerCase() !== selectedNegativoItem.unidade.toLowerCase() && (
+                    <div className="p-2 bg-yellow-50 border border-yellow-300 rounded text-xs">
+                      <p className="text-yellow-800">
+                        ⚠️ <strong>Atenção:</strong> Unidades diferentes detectadas (Positivo: {selectedPositivoItem.unidade}, Negativo: {selectedNegativoItem.unidade}).
+                        A baixa pode exceder o saldo disponível devido à conversão de unidades.
+                      </p>
+                    </div>
+                  )}
               </div>
             )}
             {searchPositivos && filteredPositivos.length === 0 && (
@@ -681,7 +681,7 @@ export default function AdjustmentsTable({
               Selecione um item negativo e encontre o positivo equivalente
             </p>
           </div>
-          
+
           {/* Filtros para negativos */}
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 space-y-2">
             <div className="flex gap-2">
@@ -809,12 +809,12 @@ export default function AdjustmentsTable({
               Itens com Saldo Positivo ({positivos.length})
             </h2>
             <p className="text-sm text-green-700 mt-1">
-              {selectedNegativo 
+              {selectedNegativo
                 ? `Encontre o positivo equivalente para: ${selectedNegativoItem?.cod_item || selectedNegativo}`
                 : "Selecione um negativo à esquerda para ver sugestões"}
             </p>
           </div>
-          
+
           {/* Filtros para positivos */}
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 space-y-2">
             <div className="flex gap-2">
@@ -865,7 +865,7 @@ export default function AdjustmentsTable({
                     Descrição
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Estoque Final
+                    Quantidade Final
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Já Usado
@@ -890,24 +890,24 @@ export default function AdjustmentsTable({
                     // CORREÇÃO Problema 01: item.estoque_final já subtrai ajustes_fornecidos na API
                     // Então precisamos adicionar os ajustes_fornecidos de volta e subtrair os do estado local
                     const disponivel = item.estoque_final + (item.ajustes_fornecidos || 0) - ajustesFornecidos;
-                    const percentualUsado = item.estoque_final > 0 
-                      ? (ajustesFornecidos / item.estoque_final) * 100 
+                    const percentualUsado = item.estoque_final > 0
+                      ? (ajustesFornecidos / item.estoque_final) * 100
                       : 0;
-                    
+
                     // Verificar se este positivo já foi usado para o negativo selecionado
-                    const positivosUsados = selectedNegativo 
+                    const positivosUsados = selectedNegativo
                       ? getPositivosUsadosParaNegativo(selectedNegativo)
                       : [];
-                    const jaFoiUsadoParaEsteNegativo = selectedNegativo 
+                    const jaFoiUsadoParaEsteNegativo = selectedNegativo
                       ? positivosUsados.includes(item.cod_item)
                       : false;
-                    
+
                     // Verificar similaridade com o negativo selecionado (para destacar sugestões)
                     const isSimilar = selectedNegativo && selectedNegativoItem
                       ? item.cod_item.includes(selectedNegativoItem.cod_item.substring(0, 3)) ||
-                        selectedNegativoItem.cod_item.includes(item.cod_item.substring(0, 3)) ||
-                        (item.descr_item && selectedNegativoItem.descr_item && 
-                         item.descr_item.toLowerCase().includes(selectedNegativoItem.descr_item.toLowerCase().substring(0, 5)))
+                      selectedNegativoItem.cod_item.includes(item.cod_item.substring(0, 3)) ||
+                      (item.descr_item && selectedNegativoItem.descr_item &&
+                        item.descr_item.toLowerCase().includes(selectedNegativoItem.descr_item.toLowerCase().substring(0, 5)))
                       : false;
 
                     return (
@@ -931,7 +931,7 @@ export default function AdjustmentsTable({
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
                           <span className="font-bold text-green-700">
-                            {item.estoque_final.toFixed(2)}
+                            {item.estoque_teorico.toFixed(2)}
                           </span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
@@ -1107,8 +1107,8 @@ export default function AdjustmentsTable({
                     );
                     // CORREÇÃO Problema 01: item.estoque_final já subtrai ajustes_fornecidos na API
                     const disponivel = positivo.estoque_final + (positivo.ajustes_fornecidos || 0) - totalFornecido;
-                    const percentualUsado = positivo.estoque_final > 0 
-                      ? (totalFornecido / positivo.estoque_final) * 100 
+                    const percentualUsado = positivo.estoque_final > 0
+                      ? (totalFornecido / positivo.estoque_final) * 100
                       : 0;
 
                     return (
@@ -1231,17 +1231,17 @@ export default function AdjustmentsTable({
                           periodId: activePeriodId,
                         }),
                       });
-                      
+
                       if (!response.ok) {
                         const error = await response.json();
                         throw new Error(error.error || "Erro ao exportar");
                       }
-                      
+
                       const blob = await response.blob();
                       const downloadUrl = window.URL.createObjectURL(blob);
                       const a = document.createElement("a");
                       a.href = downloadUrl;
-                      
+
                       // Extrair nome do arquivo do header Content-Disposition se disponível
                       const contentDisposition = response.headers.get("Content-Disposition");
                       let fileName = "correcoes_periodo.xlsx";
@@ -1251,7 +1251,7 @@ export default function AdjustmentsTable({
                           fileName = fileNameMatch[1];
                         }
                       }
-                      
+
                       a.download = fileName;
                       document.body.appendChild(a);
                       a.click();
@@ -1287,17 +1287,17 @@ export default function AdjustmentsTable({
                           periodId: activePeriodId,
                         }),
                       });
-                      
+
                       if (!response.ok) {
                         const error = await response.json();
                         throw new Error(error.error || "Erro ao exportar");
                       }
-                      
+
                       const blob = await response.blob();
                       const downloadUrl = window.URL.createObjectURL(blob);
                       const a = document.createElement("a");
                       a.href = downloadUrl;
-                      
+
                       // Extrair nome do arquivo do header Content-Disposition se disponível
                       const contentDisposition = response.headers.get("Content-Disposition");
                       let fileName = "correcoes_periodo.docx";
@@ -1307,7 +1307,7 @@ export default function AdjustmentsTable({
                           fileName = fileNameMatch[1];
                         }
                       }
-                      
+
                       a.download = fileName;
                       document.body.appendChild(a);
                       a.click();
@@ -1367,7 +1367,7 @@ export default function AdjustmentsTable({
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {adjustments.map((adj, index) => (
-                  <tr 
+                  <tr
                     key={adj.id}
                     className={`${index === 0 ? 'bg-green-50 border-l-4 border-green-500' : 'hover:bg-gray-50'} transition-colors`}
                   >

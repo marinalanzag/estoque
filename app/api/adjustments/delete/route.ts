@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
+import { revalidatePath } from "next/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +31,11 @@ export async function DELETE(req: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Revalidar as rotas afetadas
+    revalidatePath("/inventario-final");
+    revalidatePath("/api/inventory-final/data");
+    revalidatePath("/movimentacoes/consolidado");
 
     return NextResponse.json({ ok: true });
   } catch (error) {
