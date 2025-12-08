@@ -1397,6 +1397,19 @@ export default function AdjustmentsTable({
                 >
                   ⚠️ TESTE
                 </button>
+                {adjustments.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const primeiro = adjustments[0];
+                      alert(`Tentando excluir ajuste:\nID: ${primeiro.id}\nDe: ${primeiro.cod_positivo} → Para: ${primeiro.cod_negativo}`);
+                      handleDeleteAdjustment(primeiro.id, primeiro.cod_positivo, primeiro.cod_negativo, primeiro.qtd_baixada, primeiro.total_value);
+                    }}
+                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm"
+                  >
+                    🗑️ EXCLUIR PRIMEIRO
+                  </button>
+                )}
               </div>
             </div>
           </div>
