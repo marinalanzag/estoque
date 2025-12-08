@@ -169,41 +169,6 @@ export default function AdjustmentsTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spedFileId, activePeriodId]); // Carregar quando o SPED ou período mudar
 
-  // ✅ CORREÇÃO: Event delegation para botões de exclusão dentro da tabela
-  useEffect(() => {
-    const handleDeleteClick = (e: MouseEvent) => {
-      console.log("[EVENT] Clique detectado:", e.target);
-      const target = e.target as HTMLElement;
-      const button = target.closest('.delete-adjustment-btn') as HTMLButtonElement;
-
-      console.log("[EVENT] Botão encontrado:", button);
-
-      if (button) {
-        console.log("[EVENT] Datasets do botão:", button.dataset);
-        const id = button.dataset.adjustmentId;
-        const codPositivo = button.dataset.codPositivo;
-        const codNegativo = button.dataset.codNegativo;
-        const qtdBaixada = parseFloat(button.dataset.qtdBaixada || '0');
-        const totalValue = parseFloat(button.dataset.totalValue || '0');
-
-        console.log("[EVENT] ID:", id, "Positivo:", codPositivo, "Negativo:", codNegativo);
-
-        if (id && codPositivo && codNegativo) {
-          console.log("[EVENT] ✅ Chamando handleDeleteAdjustment...");
-          handleDeleteAdjustment(id, codPositivo, codNegativo, qtdBaixada, totalValue);
-        } else {
-          console.error("[EVENT] ❌ Dados incompletos!", { id, codPositivo, codNegativo });
-        }
-      }
-    };
-
-    console.log("[EVENT] Event listener adicionado");
-    document.addEventListener('click', handleDeleteClick);
-    return () => {
-      console.log("[EVENT] Event listener removido");
-      document.removeEventListener('click', handleDeleteClick);
-    };
-  }, [adjustments]); // Re-attach quando adjustments mudar
 
   const loadAdjustments = async () => {
     try {
@@ -1431,59 +1396,6 @@ export default function AdjustmentsTable({
             </div>
           </div>
 
-          {/* Lista de ajustes para exclusão (alternativa aos botões da tabela) */}
-          {adjustments.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                🗑️ Excluir Ajustes (use esta lista se os botões da tabela não funcionarem)
-              </h3>
-              <div className="max-h-96 overflow-y-auto space-y-2">
-                {adjustments.map((adj) => (
-                  <div
-                    key={adj.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100"
-                  >
-                    <div className="flex-1 grid grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-500">Data:</span>{" "}
-                        <span className="font-medium">
-                          {new Date(adj.created_at).toLocaleDateString("pt-BR")}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">De:</span>{" "}
-                        <span className="font-bold text-green-700">{adj.cod_positivo}</span>
-                        {" → "}
-                        <span className="font-bold text-red-700">{adj.cod_negativo}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Qtd:</span>{" "}
-                        <span className="font-medium">{adj.qtd_baixada.toFixed(2)}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Valor:</span>{" "}
-                        <span className="font-medium">
-                          R$ {adj.total_value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        alert(`Teste simples: ${adj.cod_negativo}`);
-                      }}
-                      className="ml-4 px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium whitespace-nowrap"
-                    >
-                      🗑️ TESTE
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-blue-50">
@@ -1564,13 +1476,13 @@ export default function AdjustmentsTable({
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <button
                         type="button"
-                        className="delete-adjustment-btn px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm transition-colors shadow-sm"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDeleteAdjustment(adj.id, adj.cod_positivo, adj.cod_negativo, adj.qtd_baixada, adj.total_value);
+                        }}
+                        className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm transition-colors shadow-sm"
                         title="Excluir este ajuste"
-                        data-adjustment-id={adj.id}
-                        data-cod-positivo={adj.cod_positivo}
-                        data-cod-negativo={adj.cod_negativo}
-                        data-qtd-baixada={adj.qtd_baixada}
-                        data-total-value={adj.total_value}
                       >
                         🗑️ Excluir
                       </button>
