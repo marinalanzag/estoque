@@ -1427,23 +1427,39 @@ export default function AdjustmentsTable({
                           }
 
                           try {
+                            console.log("[DELETE] Iniciando exclusão do ajuste:", adj.id);
                             setError(null);
-                            const res = await fetch(`/api/adjustments/delete?id=${adj.id}`, {
+
+                            const url = `/api/adjustments/delete?id=${adj.id}`;
+                            console.log("[DELETE] URL:", url);
+
+                            const res = await fetch(url, {
                               method: "DELETE",
+                              headers: {
+                                'Content-Type': 'application/json'
+                              }
                             });
 
+                            console.log("[DELETE] Response status:", res.status);
+                            console.log("[DELETE] Response ok:", res.ok);
+
                             const data = await res.json();
+                            console.log("[DELETE] Response data:", data);
 
                             if (!res.ok) {
+                              console.error("[DELETE] Erro na resposta:", data.error);
                               throw new Error(data.error || "Erro ao excluir ajuste");
                             }
 
                             console.log("[AdjustmentsTable] ✅ Ajuste excluído com sucesso:", adj.id);
+                            alert(`✅ Ajuste excluído com sucesso!\n\nO ajuste foi removido do banco de dados.`);
                             setSuccess(`✅ Ajuste excluído com sucesso!`);
 
                             // Remover do estado local imediatamente
+                            console.log("[DELETE] Removendo do estado local...");
                             setAdjustments((prev) => {
                               const updated = prev.filter(a => a.id !== adj.id);
+                              console.log("[DELETE] Ajustes restantes:", updated.length);
                               if (onAdjustmentsChange) {
                                 onAdjustmentsChange(updated);
                               }
@@ -1451,16 +1467,23 @@ export default function AdjustmentsTable({
                             });
 
                             // Recarregar dados do inventário para refletir a exclusão
+                            console.log("[DELETE] Recarregando inventário...");
                             await loadInventoryData();
 
                             // Revalidar a página no servidor
+                            console.log("[DELETE] Revalidando página...");
                             if (onRefresh) {
                               onRefresh();
                             }
                             await new Promise(resolve => setTimeout(resolve, 300));
                             router.refresh();
+                            console.log("[DELETE] Processo completo!");
                           } catch (err) {
-                            setError(err instanceof Error ? err.message : "Erro ao excluir ajuste");
+                            console.error("[DELETE] ERRO CAPTURADO:", err);
+                            const errorMsg = err instanceof Error ? err.message : "Erro ao excluir ajuste";
+                            console.error("[DELETE] Mensagem de erro:", errorMsg);
+                            alert(`❌ ERRO AO EXCLUIR:\n\n${errorMsg}\n\nVerifique o console para mais detalhes.`);
+                            setError(errorMsg);
                           }
                         }}
                         className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm transition-colors shadow-sm"
