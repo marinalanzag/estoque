@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 import { normalizeCodItem } from "@/lib/utils";
 import { getActivePeriod } from "@/lib/periods";
+import { revalidatePath } from "next/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,6 +93,30 @@ export async function POST(req: NextRequest) {
       cod_positivo: data.cod_positivo,
       period_id: data.period_id,
       sped_file_id: data.sped_file_id,
+    });
+
+    // ✅ CRÍTICO: Revalidar TODAS as rotas afetadas pela criação do ajuste
+    const rotasParaRevalidar = [
+      // Páginas
+      "/ajustes",
+      "/inventario-final",
+      "/movimentacoes/consolidado",
+
+      // APIs de dados
+      "/api/adjustments/inventory-data",
+      "/api/adjustments/list",
+      "/api/inventory-final/data",
+      "/api/consolidado/data",
+    ];
+
+    console.log(`[CREATE] Revalidando ${rotasParaRevalidar.length} rotas...`);
+    rotasParaRevalidar.forEach(rota => {
+      try {
+        revalidatePath(rota);
+        console.log(`[CREATE] ✅ Revalidado: ${rota}`);
+      } catch (err) {
+        console.error(`[CREATE] ⚠️ Erro ao revalidar ${rota}:`, err);
+      }
     });
 
     return NextResponse.json({
