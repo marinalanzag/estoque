@@ -92,18 +92,42 @@ export async function GET(
       );
     }
 
-    // Buscar dados do inventário final
-    const cookieImportIdsRaw =
-      req.cookies.get("selectedXmlImportIds")?.value ?? null;
-    const cookieImportIds = cookieImportIdsRaw
-      ? cookieImportIdsRaw.split(",").filter(Boolean)
-      : null;
-    const xmlImportIds = xmlImportIdsParam
-      ? xmlImportIdsParam.split(",").filter(Boolean)
-      : cookieImportIds ?? undefined;
+    // CRÍTICO: Buscar XMLs base do período (mesma lógica da API /api/inventory-final/data)
+    // Isso garante que as saídas sejam calculadas corretamente no Excel e SPED TXT
+    let xmlImportIds: string[] | undefined = undefined;
+
+    if (periodId) {
+      const { getBaseXmlImportsForPeriod } = await import("@/lib/periods");
+      const baseXmlImportIds = await getBaseXmlImportsForPeriod(periodId);
+
+      if (baseXmlImportIds.length > 0) {
+        xmlImportIds = baseXmlImportIds;
+        console.log(`[export-inventory] Usando ${baseXmlImportIds.length} XMLs base do período`);
+      } else {
+        console.warn(`[export-inventory] Nenhum XML base encontrado para o período ${periodId}`);
+      }
+    }
+
+    // Se não há XMLs base ou não há período, tentar usar parâmetro de URL ou cookie como fallback
+    if (!xmlImportIds || xmlImportIds.length === 0) {
+      const cookieImportIdsRaw = req.cookies.get("selectedXmlImportIds")?.value ?? null;
+      const cookieImportIds = cookieImportIdsRaw
+        ? cookieImportIdsRaw.split(",").filter(Boolean)
+        : null;
+
+      if (xmlImportIdsParam) {
+        xmlImportIds = xmlImportIdsParam.split(",").filter(Boolean);
+        console.log(`[export-inventory] Usando XMLs do parâmetro de URL: ${xmlImportIds.length}`);
+      } else if (cookieImportIds && cookieImportIds.length > 0) {
+        xmlImportIds = cookieImportIds;
+        console.log(`[export-inventory] Usando XMLs dos cookies: ${xmlImportIds.length}`);
+      } else {
+        console.warn(`[export-inventory] Nenhum XML disponível - saídas estarão zeradas`);
+      }
+    }
 
     const { items } = await getInventoryFinalData(fileId, periodId, {
-      xmlImportIds,
+      xmlImportIds: xmlImportIds ?? null,
     });
 
     // Aplicar filtros ANTES de calcular valores
