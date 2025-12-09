@@ -545,20 +545,35 @@ async function resolveStockContext(
 
 async function fetchAdjustmentsMaps(
   supabaseAdmin: SupabaseAdmin,
-  spedFileId: string
+  spedFileId: string,
+  periodId: string | null
 ): Promise<AjustesMaps> {
   const baixasPositivas = new Map<string, number>();
   const recebidos = new Map<string, number>();
 
-  const { data: adjustments, error } = await supabaseAdmin
+  // CRÍTICO: Filtrar ajustes pelo período ativo (mesma lógica da API /api/adjustments/list)
+  let adjustmentsQuery = supabaseAdmin
     .from("code_offset_adjustments")
-    .select("cod_negativo, cod_positivo, qtd_baixada")
+    .select("cod_negativo, cod_positivo, qtd_baixada, period_id")
     .eq("sped_file_id", spedFileId);
+
+  // Se houver período ativo, filtrar por ele também OU por null (ajustes antigos sem período)
+  if (periodId) {
+    // Buscar ajustes do período OU ajustes sem período (null) para compatibilidade
+    adjustmentsQuery = adjustmentsQuery.or(`period_id.eq.${periodId},period_id.is.null`);
+    console.log("[consolidado/fetchAdjustmentsMaps] Filtrando ajustes por período:", periodId, "ou period_id null");
+  } else {
+    console.log("[consolidado/fetchAdjustmentsMaps] Nenhum período ativo, buscando todos os ajustes do SPED");
+  }
+
+  const { data: adjustments, error } = await adjustmentsQuery;
 
   if (error) {
     console.error("[consolidado/fetchAdjustmentsMaps] Erro ao buscar ajustes:", error);
     return { baixasPositivas, recebidos };
   }
+
+  console.log(`[consolidado/fetchAdjustmentsMaps] Total de ajustes encontrados: ${adjustments?.length ?? 0}`);
 
   (adjustments ?? []).forEach((adj) => {
     const qtd = Number(adj.qtd_baixada ?? 0);
@@ -636,7 +651,7 @@ export async function buildConsolidado(
   const [{ aggregate: entradaAggregates }, saidaAggregates, ajustes] = await Promise.all([
     fetchEntryAggregates(supabaseAdmin, spedFileId, context.periodId),
     fetchExitAggregates(supabaseAdmin, spedFileId, options?.xmlImportIds),
-    fetchAdjustmentsMaps(supabaseAdmin, spedFileId),
+    fetchAdjustmentsMaps(supabaseAdmin, spedFileId, context.periodId),
   ]);
 
   const productMap = new Map<string, { descr_item?: string | null; unid_inv?: string | null }>();
