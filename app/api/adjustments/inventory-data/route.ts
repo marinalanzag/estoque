@@ -11,7 +11,6 @@ export async function GET(req: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin();
     const searchParams = req.nextUrl.searchParams;
     const spedFileId = searchParams.get("sped_file_id");
-    const periodIdParam = searchParams.get("period_id");
 
     if (!spedFileId) {
       return NextResponse.json(
@@ -20,84 +19,93 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // ✅ CORREÇÃO: Usar buildConsolidado() para garantir consistência entre todas as abas
-    // Esta mudança garante que a aba Ajustes mostre os mesmos valores do Consolidado
-    console.log("[inventory-data] 🔄 Usando buildConsolidado() para garantir consistência");
+    console.log("[inventory-data] ========================================");
+    console.log("[inventory-data] 🔄 GARANTINDO CONSISTÊNCIA COM CONSOLIDADO");
+    console.log("[inventory-data] Usando EXATAMENTE a mesma lógica da página Consolidado");
+    console.log("[inventory-data] ========================================");
 
-    // ✅ CRÍTICO: Buscar período ativo E estoque inicial base
-    let periodId: string | null = null;
-    let stockImportId: string | null = null;
+    // ✅ CRÍTICO: Replicar EXATAMENTE a lógica da página Consolidado
+    // Importar os mesmos helpers
+    const { getActivePeriodFromRequest, getBaseSpedFileForPeriod, getBaseXmlImportsForPeriod, getBaseStockImportForPeriod } = await import("@/lib/periods");
 
-    if (periodIdParam) {
-      periodId = periodIdParam;
-      console.log("[inventory-data] 🔍 Período recebido via query param:", periodIdParam);
-    } else {
-      const { data: periodData } = await supabaseAdmin
-        .from("periods")
-        .select("id, label, year, month")
-        .eq("is_active", true)
-        .single();
+    // Buscar período ativo (mesma lógica)
+    const activePeriod = await getActivePeriodFromRequest();
+    console.log("[inventory-data] Período ativo:", activePeriod ? `${activePeriod.year}/${activePeriod.month}` : "NENHUM");
 
-      if (periodData) {
-        periodId = periodData.id;
-        console.log("[inventory-data] 🔍 Período ativo encontrado no banco:", {
-          id: periodData.id,
-          label: (periodData as any)?.label || `${(periodData as any)?.month}/${(periodData as any)?.year}`,
-        });
-      } else {
-        console.log("[inventory-data] ⚠️ Nenhum período ativo encontrado no banco");
+    let selectedFileId: string = spedFileId;
+    let selectedImportId: string | null = null;
+
+    if (activePeriod) {
+      // Buscar SPED base do período
+      const baseSpedId = await getBaseSpedFileForPeriod(activePeriod.id);
+      console.log("[inventory-data] SPED base do período:", baseSpedId);
+
+      if (baseSpedId) {
+        selectedFileId = baseSpedId; // Usar SPED base, não o passado via param
       }
-    }
 
-    // ✅ CRÍTICO: Buscar estoque inicial base do período
-    if (periodId) {
-      const { getBaseStockImportForPeriod } = await import("@/lib/periods");
-      const baseStockId = await getBaseStockImportForPeriod(periodId);
+      // Buscar estoque base do período
+      const baseStockId = await getBaseStockImportForPeriod(activePeriod.id);
+      console.log("[inventory-data] Estoque base do período:", baseStockId);
 
       if (baseStockId) {
-        stockImportId = baseStockId;
-        console.log("[inventory-data] ✅ Estoque base encontrado:", baseStockId);
+        selectedImportId = baseStockId;
       } else {
-        // Tentar qualquer estoque do período como fallback
+        // Fallback: qualquer estoque do período
         const { data: anyStockImport } = await supabaseAdmin
           .from("stock_initial_imports")
           .select("id")
-          .eq("period_id", periodId)
+          .eq("period_id", activePeriod.id)
           .limit(1)
           .single();
 
         if (anyStockImport) {
-          stockImportId = anyStockImport.id;
-          console.warn("[inventory-data] ⚠️ Nenhum estoque base, usando qualquer estoque do período:", stockImportId);
+          selectedImportId = anyStockImport.id;
+          console.warn("[inventory-data] ⚠️ Usando fallback de estoque:", selectedImportId);
         } else {
-          console.error("[inventory-data] ❌ Nenhum estoque inicial encontrado para o período!");
+          console.error("[inventory-data] ❌ Nenhum estoque encontrado para o período!");
           return NextResponse.json(
             { error: "Nenhum estoque inicial encontrado para o período ativo" },
             { status: 400 }
           );
         }
       }
-    }
+    } else {
+      console.warn("[inventory-data] ⚠️ Nenhum período ativo - modo compatibilidade");
+      // Sem período ativo: buscar qualquer estoque (compatibilidade)
+      const { data: anyStock } = await supabaseAdmin
+        .from("stock_initial_imports")
+        .select("id")
+        .limit(1)
+        .single();
 
-    // ✅ CRÍTICO: Buscar XMLs base do período
-    let xmlImportIds: string[] | undefined = undefined;
-    if (periodId) {
-      const { getBaseXmlImportsForPeriod } = await import("@/lib/periods");
-      const baseXmlIds = await getBaseXmlImportsForPeriod(periodId);
-
-      if (baseXmlIds.length > 0) {
-        xmlImportIds = baseXmlIds;
-        console.log("[inventory-data] ✅ XMLs base encontrados:", baseXmlIds.length);
-      } else {
-        console.warn("[inventory-data] ⚠️ Nenhum XML base encontrado para o período");
+      if (anyStock) {
+        selectedImportId = anyStock.id;
       }
     }
 
-    // ✅ CORREÇÃO: Passar stockImportId (ID do estoque inicial), NÃO periodId!
+    // ✅ CRÍTICO: Buscar XMLs base do período (mesma lógica da página Consolidado)
+    let xmlsParaUsar: string[] | null = null;
+    if (activePeriod) {
+      const baseXmlImportIds = await getBaseXmlImportsForPeriod(activePeriod.id);
+      console.log("[inventory-data] XMLs base encontrados:", baseXmlImportIds.length);
+
+      if (baseXmlImportIds.length > 0) {
+        xmlsParaUsar = baseXmlImportIds;
+      }
+    }
+
+    console.log("[inventory-data] Parâmetros finais para buildConsolidado:", {
+      selectedImportId,
+      selectedFileId,
+      xmlsParaUsar: xmlsParaUsar?.length ?? 0,
+    });
+
+    // ✅ CRÍTICO: Chamar buildConsolidado com EXATAMENTE os mesmos parâmetros
     const consolidado = await buildConsolidado(
-      stockImportId, // ✅ ID do estoque inicial (não do período!)
-      spedFileId,
-      { xmlImportIds } // ✅ Passar array de XMLs base (não null!)
+      selectedImportId, // ✅ ID do estoque inicial
+      selectedFileId,   // ✅ ID do SPED base
+      { xmlImportIds: xmlsParaUsar } // ✅ XMLs base do período
     );
 
     console.log("[inventory-data] ✅ Consolidado construído:", {
@@ -171,12 +179,12 @@ export async function GET(req: NextRequest) {
 
     // Calcular total de ajustes (buscar do banco)
     let totalAjustes = 0;
-    if (periodId) {
+    if (activePeriod) {
       const { data: adjustments } = await supabaseAdmin
         .from("code_offset_adjustments")
         .select("total_value")
-        .eq("sped_file_id", spedFileId)
-        .or(`period_id.eq.${periodId},period_id.is.null`);
+        .eq("sped_file_id", selectedFileId)
+        .or(`period_id.eq.${activePeriod.id},period_id.is.null`);
 
       totalAjustes = (adjustments ?? []).reduce(
         (acc, adj) => acc + Number(adj.total_value),
