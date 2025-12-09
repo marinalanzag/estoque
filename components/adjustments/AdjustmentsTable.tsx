@@ -637,13 +637,13 @@ export default function AdjustmentsTable({
               {negativos.map((item) => (
                 <option key={item.cod_item} value={item.cod_item}>
                   {item.cod_item} - {item.descr_item || "[Sem descrição]"} (
-                  Estoque: {item.estoque_final.toFixed(2)})
+                  Estoque: {item.estoque_teorico.toFixed(2)})
                 </option>
               ))}
             </select>
             {selectedNegativoItem && (
               <p className="mt-1 text-xs text-gray-500">
-                Saldo atual: {selectedNegativoItem.estoque_final.toFixed(2)}
+                Saldo atual: {selectedNegativoItem.estoque_teorico.toFixed(2)}
               </p>
             )}
           </div>
@@ -809,10 +809,13 @@ export default function AdjustmentsTable({
                     Descrição
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Saldo Atual
+                    Saldo Cru
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Recebido
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Após Ajustes
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
@@ -822,7 +825,7 @@ export default function AdjustmentsTable({
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredNegativos.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
                       {searchNegativos ? "Nenhum item encontrado com a busca." : "Nenhum item com saldo negativo encontrado."}
                     </td>
                   </tr>
@@ -835,7 +838,9 @@ export default function AdjustmentsTable({
                       (acc, adj) => acc + Number(adj.qtd_baixada),
                       0
                     );
-                    const saldoAposAjustes = item.estoque_final + ajustesRecebidos;
+                    // CORREÇÃO: saldo cru = estoque_teorico (sem ajustes), após ajustes = estoque_teorico + recebidos
+                    const saldoCru = item.estoque_teorico;
+                    const saldoAposAjustes = saldoCru + ajustesRecebidos;
                     const resolvido = saldoAposAjustes >= 0;
                     const aindaPrecisa = Math.abs(Math.min(0, saldoAposAjustes));
 
@@ -854,8 +859,8 @@ export default function AdjustmentsTable({
                           {item.descr_item || "[Sem descrição]"}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
-                          <span className={`font-bold ${item.estoque_final < 0 ? "text-red-600" : "text-gray-900"}`}>
-                            {item.estoque_final.toFixed(2)}
+                          <span className={`font-bold ${saldoCru < 0 ? "text-red-600" : "text-gray-900"}`}>
+                            {saldoCru.toFixed(2)}
                           </span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
@@ -866,6 +871,11 @@ export default function AdjustmentsTable({
                           ) : (
                             <span className="text-gray-400">-</span>
                           )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
+                          <span className={`font-medium ${saldoAposAjustes < 0 ? "text-red-600" : saldoAposAjustes === 0 ? "text-gray-600" : "text-green-600"}`}>
+                            {saldoAposAjustes.toFixed(2)}
+                          </span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-center">
                           {resolvido ? (
@@ -972,8 +982,10 @@ export default function AdjustmentsTable({
                     const ajustesFornecidos = adjustments
                       .filter((adj) => adj.cod_positivo === item.cod_item)
                       .reduce((acc, adj) => acc + Number(adj.qtd_baixada), 0);
-                    // ✅ CORREÇÃO: Usar estoque_teorico (SEM ajustes de baixas) menos baixas já feitas
-                    // Mostra quanto ainda está disponível para fazer novas baixas
+                    // ✅ TABELA DE POSITIVOS: Mostra valores CRU (estoque_teorico)
+                    // Qtd Final = estoque_teorico (sem ajustes)
+                    // Já Usado = ajustes já fornecidos
+                    // Disponível = estoque_teorico - ajustes fornecidos
                     const disponivel = item.estoque_teorico - ajustesFornecidos;
                     const percentualUsado = item.estoque_teorico > 0
                       ? (ajustesFornecidos / item.estoque_teorico) * 100
