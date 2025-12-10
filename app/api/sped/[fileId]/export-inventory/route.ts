@@ -257,13 +257,13 @@ function generateSPEDFile(
     0
   );
 
-  // Formatar VL_INV: N(17.2) - 13 inteiros + 2 decimais, ponto como decimal
-  const vlInv = formatNumber17_2(valorTotal);
+  // Formatar VL_INV: N(17.2) - 13 inteiros + 2 decimais, vírgula como decimal (padrão SPED)
+  const vlInv = formatNumber17_2(valorTotal).replace(".", ",");
 
   // Cabeçalho (H005)
   // |H005|DT_INV|VL_INV|MOT_INV|
   // DT_INV: DDMMAAAA
-  // VL_INV: N(17.2) com ponto como decimal
+  // VL_INV: N(17.2) com vírgula como decimal
   // MOT_INV: sempre "01"
   lines.push(`|H005|${dtInv}|${vlInv}|01|`);
 
@@ -272,14 +272,26 @@ function generateSPEDFile(
   items.forEach((item) => {
     const codItem = item.cod_item; // Já normalizado com 6 dígitos
     const unid = item.unid; // Já validado acima
-    const qtd = formatNumber19_6(item.estoque_final); // N(19.6) - 6 decimais, ponto
-    const vlUnit = formatNumber19_6(item.unit_cost); // N(19.6) - 6 decimais, ponto
-    const vlItem = formatNumber19_2(item.valor_estoque_final); // N(19.2) - 2 decimais, ponto
+
+    // FONTE DA VERDADE: VL_ITEM (valor total)
+    // VL_UNIT é CALCULADO como VL_ITEM ÷ QTD (padrão fiscal SPED)
+    const quantidade = item.estoque_final;
+    const valorTotal = item.valor_estoque_final;
+
+    // 1. QTD: 6 decimais com vírgula
+    const qtd = formatNumber19_6(quantidade).replace(".", ",");
+
+    // 2. VL_UNIT: Calculado = VL_ITEM ÷ QTD, 6 decimais com vírgula
+    const vlUnitCalculado = valorTotal / quantidade;
+    const vlUnit = formatNumber19_6(vlUnitCalculado).replace(".", ",");
+
+    // 3. VL_ITEM: 2 decimais com vírgula
+    const vlItem = formatNumber19_2(valorTotal).replace(".", ",");
+
+    // 4. Campos fixos obrigatórios
     const indProp = "0"; // Sempre 0
-    const codPart = ""; // Vazio
-    const txtComp = ""; // Vazio
     const codCta = "281"; // Sempre 281
-    const vlItemIR = "0,00"; // Sempre 0,00 (vírgula como decimal)
+    const vlItemIR = "0,00"; // Sempre 0,00
 
     lines.push(
       `|H010|${codItem}|${unid}|${qtd}|${vlUnit}|${vlItem}|${indProp}|||${codCta}|${vlItemIR}|`
