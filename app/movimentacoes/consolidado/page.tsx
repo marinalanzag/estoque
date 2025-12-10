@@ -7,6 +7,12 @@ import { buildConsolidado } from "@/lib/consolidado";
 import { cookies } from "next/headers";
 import Link from "next/link";
 
+// CRÍTICO: Desabilitar cache completamente para esta página
+// Isso garante que sempre mostre o período ativo correto do banco de dados
+// Sem isso, o Vercel pode cachear a página e mostrar períodos desatualizados
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 interface XmlImport {
     id: string;
   label: string | null;
