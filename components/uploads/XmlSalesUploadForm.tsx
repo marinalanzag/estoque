@@ -97,7 +97,7 @@ function XmlSalesUploadFormInner({
         
         let res: Response;
         try {
-          res = await fetch("/api/sped/list", {
+          res = await fetch("/api/sped/list-nocache", {
             signal: controller.signal,
             headers: {
               'Content-Type': 'application/json',
