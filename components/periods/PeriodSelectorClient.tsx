@@ -27,6 +27,37 @@ export default function PeriodSelectorClient({
     setPeriods(initialPeriods);
     setActivePeriod(initialActivePeriod);
   }, [initialPeriods, initialActivePeriod]);
+
+  // Buscar período ativo diretamente da API ao montar para evitar cache
+  useEffect(() => {
+    const fetchActivePeriod = async () => {
+      try {
+        const response = await fetch("/api/periods/active", {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.ok && data.period) {
+            // Atualizar apenas se for diferente do estado atual
+            if (!activePeriod || activePeriod.id !== data.period.id) {
+              console.log("[PeriodSelector] Atualizando período ativo do cache:", data.period);
+              setActivePeriod(data.period);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("[PeriodSelector] Erro ao buscar período ativo:", error);
+      }
+    };
+
+    fetchActivePeriod();
+  }, []); // Executar apenas uma vez ao montar
   
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newPeriod, setNewPeriod] = useState({ 

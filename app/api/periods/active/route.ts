@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -20,20 +20,33 @@ export async function GET(req: NextRequest) {
       throw new Error(`Erro ao buscar período ativo: ${fetchError.message}`);
     }
 
+    // Headers para evitar cache
+    const headers = {
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    };
+
     // Se não houver período ativo, retornar null
     if (!activePeriods || activePeriods.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        period: null,
-      });
+      return NextResponse.json(
+        {
+          ok: true,
+          period: null,
+        },
+        { headers }
+      );
     }
 
     // Se houver apenas um período ativo, retornar ele
     if (activePeriods.length === 1) {
-      return NextResponse.json({
-        ok: true,
-        period: activePeriods[0],
-      });
+      return NextResponse.json(
+        {
+          ok: true,
+          period: activePeriods[0],
+        },
+        { headers }
+      );
     }
 
     // ⚠️ PROBLEMA: Há múltiplos períodos ativos!
@@ -58,11 +71,14 @@ export async function GET(req: NextRequest) {
         deactivateError
       );
       // Mesmo se falhar, retornar o mais recente
-      return NextResponse.json({
-        ok: true,
-        period: mostRecent,
-        warning: `Múltiplos períodos ativos detectados. Retornando o mais recente, mas não foi possível desativar os outros.`,
-      });
+      return NextResponse.json(
+        {
+          ok: true,
+          period: mostRecent,
+          warning: `Múltiplos períodos ativos detectados. Retornando o mais recente, mas não foi possível desativar os outros.`,
+        },
+        { headers }
+      );
     }
 
     console.log(
@@ -70,11 +86,14 @@ export async function GET(req: NextRequest) {
     );
 
     // Retornar o período mais recente
-    return NextResponse.json({
-      ok: true,
-      period: mostRecent,
-      warning: `Múltiplos períodos ativos foram detectados e corrigidos. O período ${mostRecent.year}/${mostRecent.month} foi mantido ativo.`,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        period: mostRecent,
+        warning: `Múltiplos períodos ativos foram detectados e corrigidos. O período ${mostRecent.year}/${mostRecent.month} foi mantido ativo.`,
+      },
+      { headers }
+    );
   } catch (error) {
     console.error("[periods/active] Erro ao buscar período ativo:", error);
     return NextResponse.json(
