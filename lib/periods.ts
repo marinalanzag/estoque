@@ -391,7 +391,7 @@ export async function getBaseStockImportForPeriod(
     .select("id")
     .eq("period_id", periodId)
     .eq("is_base", true)
-    .single();
+    .maybeSingle();
 
   if (error || !data) {
     return null;
